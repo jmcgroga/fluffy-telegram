@@ -43,9 +43,23 @@ struct MainWorkspaceView: View {
 
 struct WorkspaceToolbar: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.sidebarToggle) private var sidebarToggle
 
     var body: some View {
         HStack(spacing: 12) {
+            // Sidebar toggle button
+            Button {
+                sidebarToggle.toggle()
+            } label: {
+                Image(systemName: "sidebar.left")
+                    .symbolVariant(sidebarToggle.isShowing.wrappedValue ? .fill : .none)
+            }
+            .buttonStyle(.borderless)
+            .help("Toggle tutorial list")
+            .keyboardShortcut("s", modifiers: [.command, .control])
+            
+            Divider().frame(height: 20)
+            
             // Tutorial title
             if let tut = appState.selectedTutorial {
                 HStack(spacing: 6) {

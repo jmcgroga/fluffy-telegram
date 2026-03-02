@@ -4,10 +4,11 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject private var appState: AppState
+    @Binding var isPresented: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
+            // Header with close button
             HStack {
                 Image(systemName: "cpu")
                     .foregroundStyle(.blue)
@@ -15,6 +16,17 @@ struct SidebarView: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                 Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isPresented = false
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.borderless)
+                .help("Close sidebar")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -31,6 +43,10 @@ struct SidebarView: View {
                         let all = appState.tutorialCategories.flatMap(\.tutorials)
                         if let tut = all.first(where: { $0.id == id }) {
                             appState.selectTutorial(tut)
+                            // Auto-close sidebar after selection
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                isPresented = false
+                            }
                         }
                     }
                 }
