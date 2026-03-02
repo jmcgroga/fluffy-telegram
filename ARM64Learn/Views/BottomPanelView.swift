@@ -71,7 +71,9 @@ struct BottomPanelView: View {
 
                     if appState.activeBottomTab == .output || appState.activeBottomTab == .lldb {
                         Button {
-                            clearCurrentTab()
+                            Task { @MainActor in
+                                clearCurrentTab()
+                            }
                         } label: {
                             Image(systemName: "trash")
                         }
@@ -273,7 +275,9 @@ struct TerminalView: View {
             .background(.regularMaterial)
         }
         .onAppear {
-            appState.startTerminalIfNeeded()
+            Task { @MainActor in
+                appState.startTerminalIfNeeded()
+            }
         }
     }
 }
@@ -306,20 +310,25 @@ struct ConsoleTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
+        // Check if text actually changed to avoid unnecessary updates
+        if context.coordinator.lastText == text {
+            return
+        }
+        context.coordinator.lastText = text
+
         // Apply styled text with color coding
         let attributed = buildAttributedString(text)
         textView.textStorage?.setAttributedString(attributed)
 
-        // Auto-scroll to bottom
-        DispatchQueue.main.async {
-            textView.scrollToEndOfDocument(nil)
-        }
+        // Auto-scroll to bottom on next run loop
+        textView.scrollToEndOfDocument(nil)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     class Coordinator {
         weak var textView: NSTextView?
+        var lastText: String = ""
     }
 
     private func buildAttributedString(_ text: String) -> NSAttributedString {

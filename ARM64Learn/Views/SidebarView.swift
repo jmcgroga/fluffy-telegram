@@ -26,7 +26,8 @@ struct SidebarView: View {
             List(selection: Binding(
                 get: { appState.selectedTutorial?.id },
                 set: { id in
-                    if let id {
+                    guard let id else { return }
+                    Task { @MainActor in
                         let all = appState.tutorialCategories.flatMap(\.tutorials)
                         if let tut = all.first(where: { $0.id == id }) {
                             appState.selectTutorial(tut)

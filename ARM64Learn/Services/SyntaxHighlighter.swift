@@ -244,11 +244,8 @@ final class SyntaxHighlightingStorage: NSTextStorage {
     }
 
     override func processEditing() {
-        // Re-highlight the visible paragraph that changed, then the full document
         let highlighted = SyntaxHighlighter.highlight(backing.string, language: language)
-        let fullRange = NSRange(location: 0, length: backing.length)
         backing.setAttributedString(highlighted)
-        edited(.editedAttributes, range: fullRange, changeInLength: 0)
         super.processEditing()
     }
 }

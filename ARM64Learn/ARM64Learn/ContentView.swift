@@ -2,9 +2,10 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var appState = AppState()
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView()
                 .environmentObject(appState)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)

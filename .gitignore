@@ -60,3 +60,30 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Xcode User settings & Derived Data
+xcuserdata/
+DerivedData/
+*.hmap
+
+# Build products
+*.ipa
+*.dSYM*
+*.o
+*.a
+*.framework
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods & Carthage
+# Pods/ (Recommended to check in)
+Podfile.lock
+Carthage/Build/
+
+# OS X / Generic
+.DS_Store
+*.tmp
+

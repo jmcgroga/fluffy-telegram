@@ -145,7 +145,7 @@ final class ProcessRunner {
 
 // MARK: - LLDB Session
 
-final class LLDBSession: ObservableObject {
+final class LLDBSession {
     let binaryPath: String
     var outputHandler: ((String) -> Void)?
 
@@ -177,16 +177,22 @@ final class LLDBSession: ObservableObject {
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            self?.outputHandler?(text)
+            DispatchQueue.main.async {
+                self?.outputHandler?(text)
+            }
         }
         stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            self?.outputHandler?(text)
+            DispatchQueue.main.async {
+                self?.outputHandler?(text)
+            }
         }
 
         process.terminationHandler = { [weak self] _ in
-            self?.outputHandler?("\n[LLDB session ended]\n")
+            DispatchQueue.main.async {
+                self?.outputHandler?("\n[LLDB session ended]\n")
+            }
         }
 
         do {
@@ -219,7 +225,7 @@ final class LLDBSession: ObservableObject {
 
 // MARK: - Terminal Session
 
-final class TerminalSession: ObservableObject {
+final class TerminalSession {
     var outputHandler: ((String) -> Void)?
 
     private var process: Process?
@@ -246,16 +252,22 @@ final class TerminalSession: ObservableObject {
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            self?.outputHandler?(text)
+            DispatchQueue.main.async {
+                self?.outputHandler?(text)
+            }
         }
         stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            self?.outputHandler?(text)
+            DispatchQueue.main.async {
+                self?.outputHandler?(text)
+            }
         }
 
         process.terminationHandler = { [weak self] _ in
-            self?.outputHandler?("\n[Session ended]\n")
+            DispatchQueue.main.async {
+                self?.outputHandler?("\n[Session ended]\n")
+            }
         }
 
         try? process.run()

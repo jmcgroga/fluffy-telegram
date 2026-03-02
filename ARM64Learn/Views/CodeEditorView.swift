@@ -80,13 +80,17 @@ struct SyntaxTextEditor: NSViewRepresentable {
         storage.language = language
 
         let layoutManager = NSLayoutManager()
-        let container = NSTextContainer(containerSize: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
-        container.widthTracksTextView = true
-        layoutManager.addTextContainer(container)
+        let textContainer = NSTextContainer(
+            containerSize: NSSize(width: CGFloat.greatestFiniteMagnitude,
+                                  height: CGFloat.greatestFiniteMagnitude)
+        )
+        textContainer.widthTracksTextView = true
+        layoutManager.addTextContainer(textContainer)
         storage.addLayoutManager(layoutManager)
 
-        // Create text view
-        let textView = NSTextView(frame: .zero, textContainer: container)
+        // LineNumberTextView draws its own gutter, keeping everything in one
+        // coordinate space so click-to-cursor mapping is always correct.
+        let textView = LineNumberTextView(frame: .zero, textContainer: textContainer)
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = true
@@ -101,16 +105,14 @@ struct SyntaxTextEditor: NSViewRepresentable {
         textView.isContinuousSpellCheckingEnabled = false
         textView.isGrammarCheckingEnabled = false
 
-        // Appearance
         textView.backgroundColor = NSColor(named: "editorBackground") ?? .textBackgroundColor
         textView.insertionPointColor = .systemBlue
         textView.selectedTextAttributes = [
             .backgroundColor: NSColor.selectedTextBackgroundColor.withAlphaComponent(0.4)
         ]
-        textView.textContainerInset = NSSize(width: 4, height: 12)
         textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        // textContainerInset is set inside LineNumberTextView.init
 
-        // Line number support via the ruler view
         let scrollView = NSScrollView()
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
@@ -118,11 +120,6 @@ struct SyntaxTextEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
-
-        // Line numbers
-        let lineNumberView = LineNumberRulerView(textView: textView)
-        scrollView.verticalRulerView = lineNumberView
-        scrollView.rulersVisible = true
 
         // Set initial text
         storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: text)
@@ -139,15 +136,12 @@ struct SyntaxTextEditor: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView,
               let storage = textView.textStorage as? SyntaxHighlightingStorage else { return }
 
-        // Update language
         if storage.language != language {
             storage.language = language
-            // Re-highlight
             let range = NSRange(location: 0, length: storage.length)
             storage.edited(.editedAttributes, range: range, changeInLength: 0)
         }
 
-        // Update text only if changed from outside
         if storage.string != text && !context.coordinator.isEditing {
             let range = NSRange(location: 0, length: storage.length)
             storage.replaceCharacters(in: range, with: text)
@@ -168,12 +162,12 @@ struct SyntaxTextEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
-            isEditing = true
-            parent.text = textView.string
-            isEditing = false
-
-            // Update line number ruler
-            (textView.enclosingScrollView?.verticalRulerView as? LineNumberRulerView)?.needsDisplay = true
+            let newText = textView.string
+            Task { @MainActor in
+                self.isEditing = true
+                self.parent.text = newText
+                self.isEditing = false
+            }
         }
 
         // Smart indentation: maintain indentation on new line
@@ -197,80 +191,99 @@ struct SyntaxTextEditor: NSViewRepresentable {
     }
 }
 
-// MARK: - Line Number Ruler View
+// MARK: - Line Number Text View
+// NSTextView subclass that draws its own gutter on the left side.
+// Embedding the gutter inside the text view keeps everything in one
+// coordinate space — click positions are always mapped correctly by
+// the text view's own event-handling machinery.
 
-final class LineNumberRulerView: NSRulerView {
-    private weak var textView: NSTextView?
+final class LineNumberTextView: NSTextView {
+    static let gutterWidth: CGFloat = 44
 
-    init(textView: NSTextView) {
-        self.textView = textView
-        super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
-        self.ruleThickness = 40
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(textDidChange),
-            name: NSText.didChangeNotification,
-            object: textView
-        )
+    private let gutterAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
+        .foregroundColor: NSColor.tertiaryLabelColor,
+    ]
+
+    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+        super.init(frame: frameRect, textContainer: container)
+        // Shift the text container right to make room for the gutter.
+        // textContainerInset.width becomes textContainerOrigin.x, so text
+        // starts at x = gutterWidth + 8 (an 8-pt gap between gutter and code).
+        textContainerInset = NSSize(width: LineNumberTextView.gutterWidth + 8, height: 12)
     }
 
-    required init(coder: NSCoder) { fatalError() }
+    required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func textDidChange(_ notification: Notification) {
-        needsDisplay = true
+    override func draw(_ dirtyRect: NSRect) {
+        // 1. Draw normal text-view content (background, selection, glyphs).
+        super.draw(dirtyRect)
+
+        // 2. Overdraw gutter background on top of text-view background.
+        NSColor(white: 0.12, alpha: 1).setFill()
+        NSRect(x: bounds.minX,
+               y: dirtyRect.minY,
+               width: LineNumberTextView.gutterWidth,
+               height: dirtyRect.height).fill()
+
+        // 3. Separator between gutter and code.
+        NSColor.separatorColor.setStroke()
+        let sep = NSBezierPath()
+        let sepX = bounds.minX + LineNumberTextView.gutterWidth - 0.5
+        sep.move(to: NSPoint(x: sepX, y: dirtyRect.minY))
+        sep.line(to: NSPoint(x: sepX, y: dirtyRect.maxY))
+        sep.lineWidth = 0.5
+        sep.stroke()
+
+        // 4. Line numbers.
+        drawLineNumbers(in: dirtyRect)
     }
 
-    override func drawHashMarksAndLabels(in rect: NSRect) {
-        guard let textView = textView,
-              let layoutManager = textView.layoutManager,
-              let container = textView.textContainer else { return }
+    private func drawLineNumbers(in dirtyRect: NSRect) {
+        guard let layoutManager = layoutManager,
+              let container = textContainer else { return }
 
-        let visibleRect = textView.enclosingScrollView?.contentView.bounds ?? .zero
-        let textOrigin = textView.textContainerOrigin
+        // textContainerOrigin is (gutterWidth+8, 12) — the text container's
+        // origin in text-view coordinates, accounting for textContainerInset.
+        let textOrigin = textContainerOrigin
 
-        // Background
-        NSColor.windowBackgroundColor.blended(withFraction: 0.3, of: .secondaryLabelColor)?.setFill()
-        NSColor(white: 0.15, alpha: 1).setFill()
-        rect.fill()
-
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
-            .foregroundColor: NSColor.tertiaryLabelColor,
-        ]
+        // documentVisibleRect is in text-view coordinates and reflects the
+        // current scroll offset, matching what glyphRange(forBoundingRect:)
+        // expects when the text-view IS the document view.
+        let visibleRect = enclosingScrollView?.documentVisibleRect ?? bounds
 
         let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: container)
+        guard glyphRange.length > 0 else {
+            // Empty document: draw "1" at the top.
+            let label = "1" as NSString
+            let labelSize = label.size(withAttributes: gutterAttrs)
+            let x = bounds.minX + LineNumberTextView.gutterWidth - labelSize.width - 8
+            let y = textOrigin.y + (NSFont.monospacedSystemFont(ofSize: 13, weight: .regular).pointSize - labelSize.height) / 2
+            label.draw(at: NSPoint(x: x, y: y), withAttributes: gutterAttrs)
+            return
+        }
+
         let charRange = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        let textBefore = (string as NSString).substring(to: charRange.location)
+        var lineNumber = textBefore.components(separatedBy: "\n").count
 
-        var lineNumber = 1
-        var charIndex = 0
-
-        // Count lines before the visible range
-        let stringBeforeVisible = (textView.string as NSString).substring(to: charRange.location)
-        lineNumber = stringBeforeVisible.components(separatedBy: "\n").count
-
-        // Draw line numbers for visible lines
         var glyphIndex = glyphRange.location
         while glyphIndex < NSMaxRange(glyphRange) {
             var lineGlyphRange = NSRange()
             let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineGlyphRange)
-            let yPos = lineRect.minY + textOrigin.y - visibleRect.minY
+
+            // lineRect is in text-container coordinates.
+            // Add textContainerOrigin to get text-view coordinates, which is
+            // what draw(_:) uses (scroll offset already baked into bounds.origin).
+            let y = lineRect.minY + textOrigin.y + (lineRect.height - (gutterAttrs[.font] as! NSFont).capHeight) / 2
 
             let label = "\(lineNumber)" as NSString
-            let labelSize = label.size(withAttributes: attrs)
-            let x = ruleThickness - labelSize.width - 6
-            let y = yPos + (lineRect.height - labelSize.height) / 2
-            label.draw(at: NSPoint(x: x, y: y), withAttributes: attrs)
+            let labelSize = label.size(withAttributes: gutterAttrs)
+            let x = bounds.minX + LineNumberTextView.gutterWidth - labelSize.width - 8
+            label.draw(at: NSPoint(x: x, y: y), withAttributes: gutterAttrs)
 
             lineNumber += 1
             glyphIndex = NSMaxRange(lineGlyphRange)
         }
-
-        // Draw separator line
-        NSColor.separatorColor.setStroke()
-        let path = NSBezierPath()
-        path.move(to: NSPoint(x: ruleThickness - 0.5, y: rect.minY))
-        path.line(to: NSPoint(x: ruleThickness - 0.5, y: rect.maxY))
-        path.lineWidth = 0.5
-        path.stroke()
     }
 }

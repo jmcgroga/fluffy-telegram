@@ -40,13 +40,13 @@ final class TutorialLoader {
     // MARK: - Load from bundle resource
 
     private static func loadTutorial(filename: String, fallback: Tutorial) -> Tutorial {
-        guard let url = Bundle.module.url(
+        guard let url = Bundle.main.url(
             forResource: filename,
             withExtension: "md",
             subdirectory: "Resources/Tutorials"
         ) else {
             // Try alternate path
-            if let url2 = Bundle.module.url(forResource: filename, withExtension: "md") {
+            if let url2 = Bundle.main.url(forResource: filename, withExtension: "md") {
                 if let content = try? String(contentsOf: url2, encoding: .utf8) {
                     return Tutorial(
                         title: fallback.title,

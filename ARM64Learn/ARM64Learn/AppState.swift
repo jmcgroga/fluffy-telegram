@@ -171,9 +171,7 @@ class AppState: ObservableObject {
             lldbOutput = "Starting LLDB session with binary: \(path)\n\n"
             let session = LLDBSession(binaryPath: path)
             session.outputHandler = { [weak self] text in
-                Task { @MainActor in
-                    self?.lldbOutput += text
-                }
+                self?.lldbOutput += text
             }
             await session.start()
             lldbSession = session
@@ -195,9 +193,7 @@ class AppState: ObservableObject {
         guard terminalSession == nil else { return }
         let session = TerminalSession()
         session.outputHandler = { [weak self] text in
-            Task { @MainActor in
-                self?.terminalOutput += text
-            }
+            self?.terminalOutput += text
         }
         session.start()
         terminalSession = session
