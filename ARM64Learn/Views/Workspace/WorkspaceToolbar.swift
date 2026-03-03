@@ -1,44 +1,5 @@
 import SwiftUI
 
-// MARK: - Main Workspace
-
-struct MainWorkspaceView: View {
-    @EnvironmentObject private var appState: AppState
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Toolbar
-            WorkspaceToolbar()
-
-            Divider()
-
-            // Three-panel layout
-            HSplitView {
-                // Panel 1: Tutorial Content
-                TutorialContentView()
-                    .frame(minWidth: 320)
-
-                // Panel 2: Code Editor
-                CodeEditorView()
-                    .frame(minWidth: 320)
-
-                // Panel 3: Memory Visualization
-                MemoryLayoutView()
-                    .frame(minWidth: 280)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // Bottom panel (expandable, spans panels 2 + 3)
-            if appState.bottomPanelVisible {
-                Divider()
-                BottomPanelView()
-                    .frame(height: appState.bottomPanelHeight)
-            }
-        }
-        .background(.windowBackground)
-    }
-}
-
 // MARK: - Workspace Toolbar
 
 struct WorkspaceToolbar: View {
@@ -47,7 +8,7 @@ struct WorkspaceToolbar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Sidebar toggle button
+            // Sidebar toggle button (tutorial list)
             Button {
                 sidebarToggle.toggle()
             } label: {
@@ -112,17 +73,47 @@ struct WorkspaceToolbar: View {
 
             Divider().frame(height: 20)
 
-            // Bottom panel toggle
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    appState.bottomPanelVisible.toggle()
+            // Panel visibility toggles
+            HStack(spacing: 4) {
+                // Tutorial panel toggle
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.tutorialPanelVisible.toggle()
+                    }
+                } label: {
+                    Image(systemName: "doc.text")
+                        .symbolVariant(appState.tutorialPanelVisible ? .fill : .none)
                 }
-            } label: {
-                Image(systemName: appState.bottomPanelVisible ? "rectangle.bottomthird.inset.filled" : "rectangle.bottomthird.inset.filled")
-                    .symbolVariant(appState.bottomPanelVisible ? .fill : .none)
+                .buttonStyle(.borderless)
+                .help("Toggle tutorial panel (\(appState.tutorialPanelVisible ? "Hide" : "Show"))")
+                .keyboardShortcut("1", modifiers: [.command, .option])
+                
+                // Register panel toggle
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.registerPanelVisible.toggle()
+                    }
+                } label: {
+                    Image(systemName: "cpu")
+                        .symbolVariant(appState.registerPanelVisible ? .fill : .none)
+                }
+                .buttonStyle(.borderless)
+                .help("Toggle register panel (\(appState.registerPanelVisible ? "Hide" : "Show"))")
+                .keyboardShortcut("2", modifiers: [.command, .option])
+                
+                // Bottom panel toggle
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.bottomPanelVisible.toggle()
+                    }
+                } label: {
+                    Image(systemName: "rectangle.bottomthird.inset.filled")
+                        .symbolVariant(appState.bottomPanelVisible ? .fill : .none)
+                }
+                .buttonStyle(.borderless)
+                .help("Toggle bottom panel (\(appState.bottomPanelVisible ? "Hide" : "Show"))")
+                .keyboardShortcut("3", modifiers: [.command, .option])
             }
-            .buttonStyle(.borderless)
-            .help("Toggle bottom panel")
 
             if appState.isCompiling {
                 ProgressView()
@@ -133,4 +124,13 @@ struct WorkspaceToolbar: View {
         .padding(.vertical, 8)
         .background(.regularMaterial)
     }
+}
+
+#Preview("Workspace Toolbar") {
+    @Previewable @StateObject var previewAppState = AppState()
+    
+    WorkspaceToolbar()
+        .environmentObject(previewAppState)
+        .environment(\.sidebarToggle, SidebarToggle(isShowing: .constant(false)))
+        .frame(width: 1200)
 }

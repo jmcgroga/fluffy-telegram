@@ -300,3 +300,24 @@ struct EmptyStateView: View {
         .padding(32)
     }
 }
+#Preview("Tutorial Content - Empty") {
+    @Previewable @StateObject var previewAppState = AppState()
+    
+    TutorialContentView()
+        .environmentObject(previewAppState)
+        .frame(width: 600, height: 800)
+}
+
+#Preview("Tutorial Content - With Tutorial") {
+    @Previewable @StateObject var previewAppState = AppState()
+    
+    TutorialContentView()
+        .environmentObject(previewAppState)
+        .onAppear {
+            if let firstTutorial = previewAppState.tutorialCategories.first?.tutorials.first {
+                previewAppState.selectTutorial(firstTutorial)
+            }
+        }
+        .frame(width: 600, height: 800)
+}
+

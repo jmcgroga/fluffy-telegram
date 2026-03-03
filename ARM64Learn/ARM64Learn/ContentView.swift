@@ -1,13 +1,15 @@
 import SwiftUI
 
-struct ContentView: View {
+// MARK: - App Root View
+
+struct AppRootView: View {
     @StateObject private var appState = AppState()
     @State private var showSidebar = false
 
     var body: some View {
         ZStack(alignment: .leading) {
             // Main workspace (always visible)
-            MainWorkspaceView()
+            WorkspaceView()
                 .environmentObject(appState)
             
             // Sliding sidebar overlay
@@ -22,7 +24,7 @@ struct ContentView: View {
                     }
                 
                 // Sidebar panel
-                SidebarView(isPresented: $showSidebar)
+                TutorialListSidebar(isPresented: $showSidebar)
                     .environmentObject(appState)
                     .frame(width: 280)
                     .background(.regularMaterial)
@@ -63,3 +65,4 @@ extension EnvironmentValues {
         set { self[SidebarToggleKey.self] = newValue }
     }
 }
+

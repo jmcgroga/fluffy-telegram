@@ -29,6 +29,10 @@ enum BottomPanelTab: String, CaseIterable, Identifiable {
     case output = "Build Output"
     case terminal = "Terminal"
     case lldb = "LLDB"
+    case stack = "Stack"
+    case heap = "Heap"
+    case data = "Data"
+    case text = "Text"
 
     var id: String { rawValue }
 
@@ -37,6 +41,10 @@ enum BottomPanelTab: String, CaseIterable, Identifiable {
         case .output: return "hammer"
         case .terminal: return "terminal"
         case .lldb: return "ant.circle"
+        case .stack: return "square.stack.3d.down.right"
+        case .heap: return "memorychip"
+        case .data: return "tablecells"
+        case .text: return "doc.text"
         }
     }
 }
@@ -105,8 +113,10 @@ class AppState: ObservableObject {
     @Published var codeLanguage: CodeLanguage = .arm64
     @Published var memoryState: MemoryState = MemoryState()
 
-    // Bottom panel
-    @Published var bottomPanelVisible: Bool = false
+    // Panel visibility
+    @Published var tutorialPanelVisible: Bool = true
+    @Published var registerPanelVisible: Bool = true
+    @Published var bottomPanelVisible: Bool = true
     @Published var bottomPanelHeight: CGFloat = 300
     @Published var activeBottomTab: BottomPanelTab = .output
 

@@ -7,7 +7,7 @@ struct ARM64LearnApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppRootView()
                 .frame(minWidth: 1280, minHeight: 800)
         }
         .windowStyle(.titleBar)

@@ -7,17 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0F0D4CB92F5664B00086CE5E /* REFACTORING_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CB82F5664B00086CE5E /* REFACTORING_SUMMARY.md */; };
 		0F47D59B2F548A4A009CCA90 /* MemoryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5812F548A4A009CCA90 /* MemoryState.swift */; };
 		0F47D59C2F548A4A009CCA90 /* TutorialLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5922F548A4A009CCA90 /* TutorialLoader.swift */; };
 		0F47D59D2F548A4A009CCA90 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */; };
-		0F47D59E2F548A4A009CCA90 /* MemoryLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5972F548A4A009CCA90 /* MemoryLayoutView.swift */; };
-		0F47D59F2F548A4A009CCA90 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5982F548A4A009CCA90 /* SidebarView.swift */; };
-		0F47D5A02F548A4A009CCA90 /* BottomPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5942F548A4A009CCA90 /* BottomPanelView.swift */; };
-		0F47D5A12F548A4A009CCA90 /* TutorialContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5992F548A4A009CCA90 /* TutorialContentView.swift */; };
 		0F47D5A22F548A4A009CCA90 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */; };
-		0F47D5A32F548A4A009CCA90 /* CodeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5952F548A4A009CCA90 /* CodeEditorView.swift */; };
 		0F47D5A42F548A4A009CCA90 /* Tutorial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5822F548A4A009CCA90 /* Tutorial.swift */; };
-		0F47D5A52F548A4A009CCA90 /* MainWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5962F548A4A009CCA90 /* MainWorkspaceView.swift */; };
 		0F47D5A62F548A4A009CCA90 /* 06_logical_ops.md in Resources */ = {isa = PBXBuildFile; fileRef = 0F47D5892F548A4A009CCA90 /* 06_logical_ops.md */; };
 		0F47D5A72F548A4A009CCA90 /* 10_interfacing_c.md in Resources */ = {isa = PBXBuildFile; fileRef = 0F47D58D2F548A4A009CCA90 /* 10_interfacing_c.md */; };
 		0F47D5A82F548A4A009CCA90 /* 02_registers.md in Resources */ = {isa = PBXBuildFile; fileRef = 0F47D5852F548A4A009CCA90 /* 02_registers.md */; };
@@ -48,6 +43,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0F0D4CB82F5664B00086CE5E /* REFACTORING_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = REFACTORING_SUMMARY.md; sourceTree = "<group>"; };
 		0F47D54B2F54897B009CCA90 /* ARM64Learn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARM64Learn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0F47D5582F54897D009CCA90 /* ARM64LearnTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ARM64LearnTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0F47D5622F54897D009CCA90 /* ARM64LearnUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ARM64LearnUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -66,15 +62,24 @@
 		0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
 		0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
 		0F47D5922F548A4A009CCA90 /* TutorialLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialLoader.swift; sourceTree = "<group>"; };
-		0F47D5942F548A4A009CCA90 /* BottomPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomPanelView.swift; sourceTree = "<group>"; };
-		0F47D5952F548A4A009CCA90 /* CodeEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeEditorView.swift; sourceTree = "<group>"; };
-		0F47D5962F548A4A009CCA90 /* MainWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWorkspaceView.swift; sourceTree = "<group>"; };
-		0F47D5972F548A4A009CCA90 /* MemoryLayoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryLayoutView.swift; sourceTree = "<group>"; };
-		0F47D5982F548A4A009CCA90 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
-		0F47D5992F548A4A009CCA90 /* TutorialContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialContentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		0F0D4CBA2F5668A70086CE5E /* BottomPanel */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BottomPanel;
+			sourceTree = "<group>";
+		};
+		0F0D4CBC2F5668F70086CE5E /* Workspace */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Workspace;
+			sourceTree = "<group>";
+		};
+		0F0D4CBD2F5669370086CE5E /* Registers */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Registers;
+			sourceTree = "<group>";
+		};
 		0F47D54D2F54897B009CCA90 /* ARM64Learn */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ARM64Learn;
@@ -188,12 +193,10 @@
 		0F47D59A2F548A4A009CCA90 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				0F47D5942F548A4A009CCA90 /* BottomPanelView.swift */,
-				0F47D5952F548A4A009CCA90 /* CodeEditorView.swift */,
-				0F47D5962F548A4A009CCA90 /* MainWorkspaceView.swift */,
-				0F47D5972F548A4A009CCA90 /* MemoryLayoutView.swift */,
-				0F47D5982F548A4A009CCA90 /* SidebarView.swift */,
-				0F47D5992F548A4A009CCA90 /* TutorialContentView.swift */,
+				0F0D4CBA2F5668A70086CE5E /* BottomPanel */,
+				0F0D4CBC2F5668F70086CE5E /* Workspace */,
+				0F0D4CBD2F5669370086CE5E /* Registers */,
+				0F0D4CB82F5664B00086CE5E /* REFACTORING_SUMMARY.md */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -214,6 +217,9 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				0F0D4CBA2F5668A70086CE5E /* BottomPanel */,
+				0F0D4CBC2F5668F70086CE5E /* Workspace */,
+				0F0D4CBD2F5669370086CE5E /* Registers */,
 				0F47D54D2F54897B009CCA90 /* ARM64Learn */,
 			);
 			name = ARM64Learn;
@@ -323,6 +329,7 @@
 				0F47D5A82F548A4A009CCA90 /* 02_registers.md in Resources */,
 				0F47D5A92F548A4A009CCA90 /* 03_memory_addressing.md in Resources */,
 				0F47D5AA2F548A4A009CCA90 /* 07_branches.md in Resources */,
+				0F0D4CB92F5664B00086CE5E /* REFACTORING_SUMMARY.md in Resources */,
 				0F47D5AB2F548A4A009CCA90 /* 08_stack_functions.md in Resources */,
 				0F47D5AC2F548A4A009CCA90 /* 04_data_movement.md in Resources */,
 				0F47D5AD2F548A4A009CCA90 /* 05_arithmetic.md in Resources */,
@@ -355,14 +362,8 @@
 				0F47D59B2F548A4A009CCA90 /* MemoryState.swift in Sources */,
 				0F47D59C2F548A4A009CCA90 /* TutorialLoader.swift in Sources */,
 				0F47D59D2F548A4A009CCA90 /* SyntaxHighlighter.swift in Sources */,
-				0F47D59E2F548A4A009CCA90 /* MemoryLayoutView.swift in Sources */,
-				0F47D59F2F548A4A009CCA90 /* SidebarView.swift in Sources */,
-				0F47D5A02F548A4A009CCA90 /* BottomPanelView.swift in Sources */,
-				0F47D5A12F548A4A009CCA90 /* TutorialContentView.swift in Sources */,
 				0F47D5A22F548A4A009CCA90 /* ProcessRunner.swift in Sources */,
-				0F47D5A32F548A4A009CCA90 /* CodeEditorView.swift in Sources */,
 				0F47D5A42F548A4A009CCA90 /* Tutorial.swift in Sources */,
-				0F47D5A52F548A4A009CCA90 /* MainWorkspaceView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

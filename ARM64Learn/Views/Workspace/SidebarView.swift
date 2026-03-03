@@ -1,8 +1,8 @@
 import SwiftUI
 
-// MARK: - Sidebar (Table of Contents)
+// MARK: - Tutorial List Sidebar
 
-struct SidebarView: View {
+struct TutorialListSidebar: View {
     @EnvironmentObject private var appState: AppState
     @Binding var isPresented: Bool
 
@@ -123,3 +123,47 @@ struct TutorialRowView: View {
         .contentShape(Rectangle())
     }
 }
+#Preview("Sidebar View") {
+    @Previewable @State var isPresented = true
+    @Previewable @StateObject var previewAppState = AppState()
+    
+    TutorialListSidebar(isPresented: $isPresented)
+        .environmentObject(previewAppState)
+        .frame(width: 280, height: 600)
+}
+
+#Preview("Tutorial Row") {
+    @Previewable @StateObject var previewAppState = AppState()
+    
+    List {
+        TutorialRowView(tutorial: Tutorial(
+            title: "Hello World in ARM64",
+            subtitle: "Your first ARM64 assembly program",
+            content: "Sample content",
+            sampleCode: nil,
+            language: .arm64,
+            memoryHighlights: [],
+            difficulty: .beginner
+        ))
+        TutorialRowView(tutorial: Tutorial(
+            title: "Memory Management",
+            subtitle: "Understanding stack and heap",
+            content: "Sample content",
+            sampleCode: nil,
+            language: .arm64,
+            memoryHighlights: [],
+            difficulty: .intermediate
+        ))
+        TutorialRowView(tutorial: Tutorial(
+            title: "SIMD Operations",
+            subtitle: "Advanced vector processing",
+            content: "Sample content",
+            sampleCode: nil,
+            language: .arm64,
+            memoryHighlights: [],
+            difficulty: .advanced
+        ))
+    }
+    .environmentObject(previewAppState)
+}
+
