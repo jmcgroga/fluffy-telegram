@@ -1,0 +1,9 @@
+{
+  "title": "Interfacing with C",
+  "subtitle": "Calling conventions and ABI",
+  "contentFile": "10_interfacing_c.md",
+  "sampleCodeFile": "10_interfacing_c.c",
+  "language": "c",
+  "memoryHighlights": ["STACK", "__TEXT"],
+  "difficulty": "intermediate"
+}

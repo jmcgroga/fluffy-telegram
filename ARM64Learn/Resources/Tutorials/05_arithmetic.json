@@ -1,0 +1,9 @@
+{
+  "title": "Arithmetic Operations",
+  "subtitle": "ADD, SUB, MUL, and shifts",
+  "contentFile": "05_arithmetic.md",
+  "sampleCodeFile": "05_arithmetic.s",
+  "language": "arm64",
+  "memoryHighlights": ["__TEXT"],
+  "difficulty": "beginner"
+}

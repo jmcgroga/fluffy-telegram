@@ -7,7 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0F0D4CB92F5664B00086CE5E /* REFACTORING_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CB82F5664B00086CE5E /* REFACTORING_SUMMARY.md */; };
+		0F0D4CC32F566D800086CE5E /* catalog.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CC22F566D800086CE5E /* catalog.json */; };
+		0F0D4CC52F566D850086CE5E /* 01_introduction.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CC42F566D850086CE5E /* 01_introduction.json */; };
+		0F0D4CC92F566D900086CE5E /* 02_registers.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CC82F566D900086CE5E /* 02_registers.json */; };
+		0F0D4CCD2F566D9D0086CE5E /* 10_interfacing_c.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CCC2F566D9D0086CE5E /* 10_interfacing_c.json */; };
+		0F0D4CD12F566DBE0086CE5E /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CD02F566DBE0086CE5E /* README.md */; };
+		0F0D4CD32F566DC20086CE5E /* 03_memory_addressing.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CD22F566DC20086CE5E /* 03_memory_addressing.json */; };
+		0F0D4CD52F566DC60086CE5E /* 04_data_movement.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CD42F566DC60086CE5E /* 04_data_movement.json */; };
+		0F0D4CD72F566DC90086CE5E /* 05_arithmetic.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CD62F566DC90086CE5E /* 05_arithmetic.json */; };
+		0F0D4CD92F566DCC0086CE5E /* 06_logical_ops.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CD82F566DCC0086CE5E /* 06_logical_ops.json */; };
+		0F0D4CDB2F566DD10086CE5E /* 07_branches.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CDA2F566DD10086CE5E /* 07_branches.json */; };
+		0F0D4CDD2F566DD30086CE5E /* 08_stack_functions.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CDC2F566DD30086CE5E /* 08_stack_functions.json */; };
+		0F0D4CDF2F566DD70086CE5E /* 09_simd_neon.json in Resources */ = {isa = PBXBuildFile; fileRef = 0F0D4CDE2F566DD70086CE5E /* 09_simd_neon.json */; };
 		0F47D59B2F548A4A009CCA90 /* MemoryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5812F548A4A009CCA90 /* MemoryState.swift */; };
 		0F47D59C2F548A4A009CCA90 /* TutorialLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5922F548A4A009CCA90 /* TutorialLoader.swift */; };
 		0F47D59D2F548A4A009CCA90 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */; };
@@ -43,7 +54,28 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0F0D4CB82F5664B00086CE5E /* REFACTORING_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = REFACTORING_SUMMARY.md; sourceTree = "<group>"; };
+		0F0D4CC22F566D800086CE5E /* catalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = catalog.json; sourceTree = "<group>"; };
+		0F0D4CC42F566D850086CE5E /* 01_introduction.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 01_introduction.json; sourceTree = "<group>"; };
+		0F0D4CC62F566D8C0086CE5E /* 01_introduction.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 01_introduction.s; sourceTree = "<group>"; };
+		0F0D4CC82F566D900086CE5E /* 02_registers.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 02_registers.json; sourceTree = "<group>"; };
+		0F0D4CCA2F566D990086CE5E /* 02_registers.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 02_registers.s; sourceTree = "<group>"; };
+		0F0D4CCC2F566D9D0086CE5E /* 10_interfacing_c.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 10_interfacing_c.json; sourceTree = "<group>"; };
+		0F0D4CCE2F566DA60086CE5E /* 10_interfacing_c.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = 10_interfacing_c.c; sourceTree = "<group>"; };
+		0F0D4CD02F566DBE0086CE5E /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		0F0D4CD22F566DC20086CE5E /* 03_memory_addressing.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 03_memory_addressing.json; sourceTree = "<group>"; };
+		0F0D4CD42F566DC60086CE5E /* 04_data_movement.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 04_data_movement.json; sourceTree = "<group>"; };
+		0F0D4CD62F566DC90086CE5E /* 05_arithmetic.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 05_arithmetic.json; sourceTree = "<group>"; };
+		0F0D4CD82F566DCC0086CE5E /* 06_logical_ops.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 06_logical_ops.json; sourceTree = "<group>"; };
+		0F0D4CDA2F566DD10086CE5E /* 07_branches.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 07_branches.json; sourceTree = "<group>"; };
+		0F0D4CDC2F566DD30086CE5E /* 08_stack_functions.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 08_stack_functions.json; sourceTree = "<group>"; };
+		0F0D4CDE2F566DD70086CE5E /* 09_simd_neon.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = 09_simd_neon.json; sourceTree = "<group>"; };
+		0F0D4CE22F566E200086CE5E /* 03_memory_addressing.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 03_memory_addressing.s; sourceTree = "<group>"; };
+		0F0D4CE42F566E270086CE5E /* 04_data_movement.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 04_data_movement.s; sourceTree = "<group>"; };
+		0F0D4CE62F566E2D0086CE5E /* 05_arithmetic.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 05_arithmetic.s; sourceTree = "<group>"; };
+		0F0D4CE82F566E360086CE5E /* 06_logical_ops.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 06_logical_ops.s; sourceTree = "<group>"; };
+		0F0D4CEA2F566E400086CE5E /* 07_branches.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 07_branches.s; sourceTree = "<group>"; };
+		0F0D4CEC2F566E4C0086CE5E /* 08_stack_functions.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 08_stack_functions.s; sourceTree = "<group>"; };
+		0F0D4CEE2F566E570086CE5E /* 09_simd_neon.s */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.asm; path = 09_simd_neon.s; sourceTree = "<group>"; };
 		0F47D54B2F54897B009CCA90 /* ARM64Learn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARM64Learn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0F47D5582F54897D009CCA90 /* ARM64LearnTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ARM64LearnTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0F47D5622F54897D009CCA90 /* ARM64LearnUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ARM64LearnUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,6 +110,11 @@
 		0F0D4CBD2F5669370086CE5E /* Registers */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Registers;
+			sourceTree = "<group>";
+		};
+		0F0D4CF42F5673970086CE5E /* docs */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = docs;
 			sourceTree = "<group>";
 		};
 		0F47D54D2F54897B009CCA90 /* ARM64Learn */ = {
@@ -125,6 +162,7 @@
 		0F47D5422F54897B009CCA90 = {
 			isa = PBXGroup;
 			children = (
+				0F0D4CF42F5673970086CE5E /* docs */,
 				0F47D5832F548A4A009CCA90 /* Models */,
 				0F47D58F2F548A4A009CCA90 /* Resources */,
 				0F47D5932F548A4A009CCA90 /* Services */,
@@ -158,6 +196,28 @@
 		0F47D58E2F548A4A009CCA90 /* Tutorials */ = {
 			isa = PBXGroup;
 			children = (
+				0F0D4CC42F566D850086CE5E /* 01_introduction.json */,
+				0F0D4CC62F566D8C0086CE5E /* 01_introduction.s */,
+				0F0D4CC82F566D900086CE5E /* 02_registers.json */,
+				0F0D4CCA2F566D990086CE5E /* 02_registers.s */,
+				0F0D4CD22F566DC20086CE5E /* 03_memory_addressing.json */,
+				0F0D4CE22F566E200086CE5E /* 03_memory_addressing.s */,
+				0F0D4CD42F566DC60086CE5E /* 04_data_movement.json */,
+				0F0D4CE42F566E270086CE5E /* 04_data_movement.s */,
+				0F0D4CD62F566DC90086CE5E /* 05_arithmetic.json */,
+				0F0D4CE62F566E2D0086CE5E /* 05_arithmetic.s */,
+				0F0D4CD82F566DCC0086CE5E /* 06_logical_ops.json */,
+				0F0D4CE82F566E360086CE5E /* 06_logical_ops.s */,
+				0F0D4CDA2F566DD10086CE5E /* 07_branches.json */,
+				0F0D4CEA2F566E400086CE5E /* 07_branches.s */,
+				0F0D4CDC2F566DD30086CE5E /* 08_stack_functions.json */,
+				0F0D4CEC2F566E4C0086CE5E /* 08_stack_functions.s */,
+				0F0D4CDE2F566DD70086CE5E /* 09_simd_neon.json */,
+				0F0D4CEE2F566E570086CE5E /* 09_simd_neon.s */,
+				0F0D4CCE2F566DA60086CE5E /* 10_interfacing_c.c */,
+				0F0D4CCC2F566D9D0086CE5E /* 10_interfacing_c.json */,
+				0F0D4CC22F566D800086CE5E /* catalog.json */,
+				0F0D4CD02F566DBE0086CE5E /* README.md */,
 				0F47D5842F548A4A009CCA90 /* 01_introduction.md */,
 				0F47D5852F548A4A009CCA90 /* 02_registers.md */,
 				0F47D5862F548A4A009CCA90 /* 03_memory_addressing.md */,
@@ -196,7 +256,6 @@
 				0F0D4CBA2F5668A70086CE5E /* BottomPanel */,
 				0F0D4CBC2F5668F70086CE5E /* Workspace */,
 				0F0D4CBD2F5669370086CE5E /* Registers */,
-				0F0D4CB82F5664B00086CE5E /* REFACTORING_SUMMARY.md */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -220,6 +279,7 @@
 				0F0D4CBA2F5668A70086CE5E /* BottomPanel */,
 				0F0D4CBC2F5668F70086CE5E /* Workspace */,
 				0F0D4CBD2F5669370086CE5E /* Registers */,
+				0F0D4CF42F5673970086CE5E /* docs */,
 				0F47D54D2F54897B009CCA90 /* ARM64Learn */,
 			);
 			name = ARM64Learn;
@@ -324,17 +384,28 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0F0D4CC52F566D850086CE5E /* 01_introduction.json in Resources */,
+				0F0D4CDF2F566DD70086CE5E /* 09_simd_neon.json in Resources */,
+				0F0D4CD32F566DC20086CE5E /* 03_memory_addressing.json in Resources */,
+				0F0D4CD12F566DBE0086CE5E /* README.md in Resources */,
 				0F47D5A62F548A4A009CCA90 /* 06_logical_ops.md in Resources */,
 				0F47D5A72F548A4A009CCA90 /* 10_interfacing_c.md in Resources */,
 				0F47D5A82F548A4A009CCA90 /* 02_registers.md in Resources */,
 				0F47D5A92F548A4A009CCA90 /* 03_memory_addressing.md in Resources */,
+				0F0D4CD52F566DC60086CE5E /* 04_data_movement.json in Resources */,
 				0F47D5AA2F548A4A009CCA90 /* 07_branches.md in Resources */,
-				0F0D4CB92F5664B00086CE5E /* REFACTORING_SUMMARY.md in Resources */,
 				0F47D5AB2F548A4A009CCA90 /* 08_stack_functions.md in Resources */,
 				0F47D5AC2F548A4A009CCA90 /* 04_data_movement.md in Resources */,
 				0F47D5AD2F548A4A009CCA90 /* 05_arithmetic.md in Resources */,
 				0F47D5AE2F548A4A009CCA90 /* 09_simd_neon.md in Resources */,
 				0F47D5AF2F548A4A009CCA90 /* 01_introduction.md in Resources */,
+				0F0D4CDB2F566DD10086CE5E /* 07_branches.json in Resources */,
+				0F0D4CD72F566DC90086CE5E /* 05_arithmetic.json in Resources */,
+				0F0D4CDD2F566DD30086CE5E /* 08_stack_functions.json in Resources */,
+				0F0D4CCD2F566D9D0086CE5E /* 10_interfacing_c.json in Resources */,
+				0F0D4CD92F566DCC0086CE5E /* 06_logical_ops.json in Resources */,
+				0F0D4CC92F566D900086CE5E /* 02_registers.json in Resources */,
+				0F0D4CC32F566D800086CE5E /* catalog.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

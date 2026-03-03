@@ -1,0 +1,9 @@
+{
+  "title": "Memory Addressing",
+  "subtitle": "Load, Store, and addressing modes",
+  "contentFile": "03_memory_addressing.md",
+  "sampleCodeFile": "03_memory_addressing.s",
+  "language": "arm64",
+  "memoryHighlights": ["__DATA", "STACK"],
+  "difficulty": "beginner"
+}

@@ -1,0 +1,9 @@
+{
+  "title": "Introduction to ARM64",
+  "subtitle": "AArch64 architecture overview",
+  "contentFile": "01_introduction.md",
+  "sampleCodeFile": "01_introduction.s",
+  "language": "arm64",
+  "memoryHighlights": ["__TEXT", "__DATA"],
+  "difficulty": "beginner"
+}

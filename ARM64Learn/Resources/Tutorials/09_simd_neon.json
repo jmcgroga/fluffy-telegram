@@ -1,0 +1,9 @@
+{
+  "title": "SIMD and NEON",
+  "subtitle": "Vector operations and SIMD programming",
+  "contentFile": "09_simd_neon.md",
+  "sampleCodeFile": "09_simd_neon.s",
+  "language": "arm64",
+  "memoryHighlights": ["__DATA", "__TEXT"],
+  "difficulty": "advanced"
+}

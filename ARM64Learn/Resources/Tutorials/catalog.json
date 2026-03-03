@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Getting Started",
+    "icon": "star",
+    "tutorials": [
+      "01_introduction",
+      "02_registers",
+      "03_memory_addressing"
+    ]
+  },
+  {
+    "name": "Instructions",
+    "icon": "cpu",
+    "tutorials": [
+      "04_data_movement",
+      "05_arithmetic",
+      "06_logical_ops",
+      "07_branches"
+    ]
+  },
+  {
+    "name": "Advanced Topics",
+    "icon": "bolt",
+    "tutorials": [
+      "08_stack_functions",
+      "09_simd_neon",
+      "10_interfacing_c"
+    ]
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "title": "Data Movement",
+  "subtitle": "MOV, MOVZ, MOVK, and register transfers",
+  "contentFile": "04_data_movement.md",
+  "sampleCodeFile": "04_data_movement.s",
+  "language": "arm64",
+  "memoryHighlights": ["__TEXT"],
+  "difficulty": "beginner"
+}
