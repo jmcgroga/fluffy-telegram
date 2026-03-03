@@ -2,7 +2,7 @@
   "title": "Registers",
   "subtitle": "31 general-purpose + special registers",
   "contentFile": "02_registers.md",
-  "sampleCodeFile": "02_registers.s",
+  "sampleCodeFile": "02_registers.s.txt",
   "language": "arm64",
   "memoryHighlights": ["__TEXT"],
   "difficulty": "beginner"

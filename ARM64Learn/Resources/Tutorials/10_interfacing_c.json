@@ -2,7 +2,7 @@
   "title": "Interfacing with C",
   "subtitle": "Calling conventions and ABI",
   "contentFile": "10_interfacing_c.md",
-  "sampleCodeFile": "10_interfacing_c.c",
+  "sampleCodeFile": "10_interfacing_c.c.txt",
   "language": "c",
   "memoryHighlights": ["STACK", "__TEXT"],
   "difficulty": "intermediate"

@@ -134,14 +134,8 @@ class AppState: ObservableObject {
     @Published var terminalSession: TerminalSession?
 
     init() {
-        // Try loading from new resource-based system first
-        tutorialCategories = TutorialLoaderNew.loadTutorials()
-        
-        // If new system returns empty, fall back to old system
-        if tutorialCategories.isEmpty {
-            print("⚠️ New tutorial system returned no tutorials, using legacy loader")
-            tutorialCategories = TutorialLoader.loadTutorials()
-        }
+        // Load tutorials from catalog
+        tutorialCategories = TutorialLoader.loadTutorials()
         
         if let first = tutorialCategories.first?.tutorials.first {
             selectedTutorial = first

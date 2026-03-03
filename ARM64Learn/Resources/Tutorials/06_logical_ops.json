@@ -2,7 +2,7 @@
   "title": "Logical Operations",
   "subtitle": "AND, OR, XOR, and bit manipulation",
   "contentFile": "06_logical_ops.md",
-  "sampleCodeFile": "06_logical_ops.s",
+  "sampleCodeFile": "06_logical_ops.s.txt",
   "language": "arm64",
   "memoryHighlights": ["__TEXT"],
   "difficulty": "beginner"

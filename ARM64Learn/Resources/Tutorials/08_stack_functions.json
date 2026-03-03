@@ -2,7 +2,7 @@
   "title": "Stack and Functions",
   "subtitle": "Call stack, prologue, epilogue",
   "contentFile": "08_stack_functions.md",
-  "sampleCodeFile": "08_stack_functions.s",
+  "sampleCodeFile": "08_stack_functions.s.txt",
   "language": "arm64",
   "memoryHighlights": ["STACK", "__TEXT"],
   "difficulty": "intermediate"

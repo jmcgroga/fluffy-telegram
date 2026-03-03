@@ -2,7 +2,7 @@
   "title": "Branches and Control Flow",
   "subtitle": "Conditional and unconditional jumps",
   "contentFile": "07_branches.md",
-  "sampleCodeFile": "07_branches.s",
+  "sampleCodeFile": "07_branches.s.txt",
   "language": "arm64",
   "memoryHighlights": ["__TEXT"],
   "difficulty": "intermediate"
