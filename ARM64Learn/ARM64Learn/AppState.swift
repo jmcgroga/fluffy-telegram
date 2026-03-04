@@ -128,6 +128,16 @@ class AppState: ObservableObject {
     @Published var lldbOutput: String = "LLDB session not started.\n\nCompile with ⌘⇧B to build with debug symbols and launch LLDB.\n"
     @Published var lldbSession: LLDBSession?
     @Published var lldbInputHistory: [String] = []
+    @Published var lldbController: LLDBController = LLDBController()
+
+    // Debugger execution state
+    @Published var currentExecutionLine: Int? = nil
+    @Published var currentExecutionFile: String? = nil
+    @Published var lastChangedRegisters: Set<String> = []
+
+    var debuggerState: DebuggerSessionState { lldbController.sessionState }
+    var lldbIsPaused: Bool { lldbController.sessionState == .ready }
+    var lldbIsRunning: Bool { lldbController.sessionState == .running }
 
     // Terminal
     @Published var terminalOutput: String = ""
@@ -136,7 +146,7 @@ class AppState: ObservableObject {
     init() {
         // Load tutorials from catalog
         tutorialCategories = TutorialLoader.loadTutorials()
-        
+
         if let first = tutorialCategories.first?.tutorials.first {
             selectedTutorial = first
             currentCode = first.sampleCode ?? ARM64Samples.helloWorld
@@ -181,12 +191,40 @@ class AppState: ObservableObject {
 
         if success, let path = binaryPath {
             lldbOutput = "Starting LLDB session with binary: \(path)\n\n"
+
+            // Reset debugger state
+            currentExecutionLine = nil
+            currentExecutionFile = nil
+            lastChangedRegisters = []
+
             let session = LLDBSession(binaryPath: path)
+
+            // Wire display output
             session.outputHandler = { [weak self] text in
                 self?.lldbOutput += text
             }
+
+            // Wire LLDBController
+            let controller = LLDBController()
+            controller.forwardToDisplay = { [weak self] text in
+                Task { @MainActor in self?.lldbOutput += text }
+            }
+            controller.onRegistersUpdated = { [weak self] values in
+                Task { @MainActor in self?.applyRegisterUpdate(values) }
+            }
+            controller.onFrameUpdated = { [weak self] frame in
+                Task { @MainActor in self?.applyFrameUpdate(frame) }
+            }
+            controller.onProcessTerminated = { [weak self] _ in
+                Task { @MainActor in self?.currentExecutionLine = nil }
+            }
+
+            controller.attach(to: session)
             await session.start()
             lldbSession = session
+            lldbController = controller
+
+            await controller.launchAndBreakAtMain()
         } else {
             lldbOutput = "Build failed. Fix errors before debugging.\n\n" + output
             activeBottomTab = .output
@@ -194,12 +232,78 @@ class AppState: ObservableObject {
         isCompiling = false
     }
 
+    // MARK: - Register & Frame Updates
+
+    func applyRegisterUpdate(_ values: [String: UInt64]) {
+        let prev = Dictionary(uniqueKeysWithValues: memoryState.registers.map { ($0.name, $0.value) })
+        lastChangedRegisters = Set(values.keys.filter { values[$0] != prev[$0] })
+        for i in memoryState.registers.indices {
+            if let v = values[memoryState.registers[i].name] {
+                memoryState.registers[i].value = v
+                memoryState.registers[i].isChanged = lastChangedRegisters.contains(memoryState.registers[i].name)
+            }
+        }
+    }
+
+    func applyFrameUpdate(_ frame: ParsedFrame) {
+        currentExecutionLine = frame.sourceLine
+        currentExecutionFile = frame.sourceFile
+        memoryState.stackFrames = [StackFrame(
+            functionName: frame.symbol,
+            returnAddress: frame.address,
+            framePointer: memoryState.registers.first(where: { $0.name == "x29" })?.value ?? 0,
+            savedRegisters: [],
+            localVariables: []
+        )]
+    }
+
+    // MARK: - Step Controls
+
+    func stepInstruction() {
+        Task { await lldbController.stepInstruction() }
+    }
+
+    func stepOver() {
+        Task { await lldbController.stepOver() }
+    }
+
+    func stepInto() {
+        Task { await lldbController.stepInto() }
+    }
+
+    func stepOut() {
+        Task { await lldbController.stepOut() }
+    }
+
+    func continueExecution() {
+        Task { await lldbController.continueExecution() }
+    }
+
+    func pauseExecution() {
+        lldbController.pause()
+    }
+
+    func terminateDebugger() {
+        lldbController.terminate()
+        lldbSession = nil
+        currentExecutionLine = nil
+    }
+
+    // MARK: - LLDB Commands
+
     func sendLLDBCommand(_ command: String) {
         guard !command.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         lldbInputHistory.append(command)
         lldbOutput += "(lldb) \(command)\n"
-        lldbSession?.send(command + "\n")
+        Task { await lldbController.sendRawCommand(command) }
     }
+
+    func sendProgramInput(_ text: String) {
+        lldbOutput += text + "\n"
+        lldbController.sendProgramInput(text)
+    }
+
+    // MARK: - Terminal
 
     func startTerminalIfNeeded() {
         guard terminalSession == nil else { return }

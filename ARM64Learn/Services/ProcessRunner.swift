@@ -148,6 +148,8 @@ final class ProcessRunner {
 final class LLDBSession {
     let binaryPath: String
     var outputHandler: ((String) -> Void)?
+    /// Secondary output handler wired to LLDBController for command/response parsing.
+    var controllerOutputHandler: ((String) -> Void)?
 
     private var process: Process?
     private var stdinPipe: Pipe?
@@ -173,10 +175,11 @@ final class LLDBSession {
         process.standardOutput = stdout
         process.standardError  = stderr
 
-        // Stream output
+        // Stream output to display handler and controller parser
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            self?.controllerOutputHandler?(text)   // parser (sync, before main queue)
             DispatchQueue.main.async {
                 self?.outputHandler?(text)
             }
@@ -184,6 +187,7 @@ final class LLDBSession {
         stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            self?.controllerOutputHandler?(text)   // parser
             DispatchQueue.main.async {
                 self?.outputHandler?(text)
             }

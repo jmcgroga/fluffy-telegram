@@ -125,6 +125,7 @@ struct Register: Identifiable {
     var value: UInt64
     var description: String
     var category: Category
+    var isChanged: Bool = false
 
     var hexValue: String { String(format: "0x%016X", value) }
     var decValue: String { "\(value)" }

@@ -219,6 +219,7 @@ final class SyntaxHighlighter {
 final class SyntaxHighlightingStorage: NSTextStorage {
     private let backing = NSMutableAttributedString()
     var language: CodeLanguage = .arm64
+    var executionLine: Int? = nil
 
     override var string: String { backing.string }
 
@@ -246,6 +247,26 @@ final class SyntaxHighlightingStorage: NSTextStorage {
     override func processEditing() {
         let highlighted = SyntaxHighlighter.highlight(backing.string, language: language)
         backing.setAttributedString(highlighted)
+        // Re-apply execution line background after syntax highlighting overwrites it
+        applyExecutionLineBackground()
         super.processEditing()
+    }
+
+    func applyExecutionLineBackground() {
+        guard let targetLine = executionLine, targetLine > 0, backing.length > 0 else { return }
+        let string = backing.string as NSString
+        var current = 1
+        var idx = 0
+        while idx < string.length {
+            let lr = string.lineRange(for: NSRange(location: idx, length: 0))
+            if current == targetLine {
+                backing.addAttribute(.backgroundColor,
+                                     value: NSColor.systemYellow.withAlphaComponent(0.25),
+                                     range: lr)
+                return
+            }
+            current += 1
+            idx = NSMaxRange(lr)
+        }
     }
 }

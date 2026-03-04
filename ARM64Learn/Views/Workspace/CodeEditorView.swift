@@ -52,7 +52,8 @@ struct CodeEditorView: View {
             // The actual NSTextView-based editor
             SyntaxTextEditor(
                 text: $appState.currentCode,
-                language: appState.codeLanguage
+                language: appState.codeLanguage,
+                executionLine: appState.currentExecutionLine
             )
         }
         .background(.windowBackground)
@@ -69,6 +70,7 @@ struct CodeEditorView: View {
 struct SyntaxTextEditor: NSViewRepresentable {
     @Binding var text: String
     let language: CodeLanguage
+    var executionLine: Int? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -140,7 +142,7 @@ struct SyntaxTextEditor: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView,
+        guard let textView = scrollView.documentView as? LineNumberTextView,
               let storage = textView.textStorage as? SyntaxHighlightingStorage else { return }
 
         if storage.language != language {
@@ -152,6 +154,37 @@ struct SyntaxTextEditor: NSViewRepresentable {
         if storage.string != text && !context.coordinator.isEditing {
             let range = NSRange(location: 0, length: storage.length)
             storage.replaceCharacters(in: range, with: text)
+        }
+
+        // Update execution line highlight
+        if storage.executionLine != executionLine {
+            storage.executionLine = executionLine
+            let range = NSRange(location: 0, length: storage.length)
+            storage.edited(.editedAttributes, range: range, changeInLength: 0)
+            if let line = executionLine {
+                scrollToLine(line, in: textView)
+            }
+        }
+
+        // Notify the text view to redraw its gutter with the execution indicator
+        if textView.executionLine != executionLine {
+            textView.executionLine = executionLine
+            textView.setNeedsDisplay(textView.bounds)
+        }
+    }
+
+    private func scrollToLine(_ line: Int, in textView: NSTextView) {
+        let string = textView.string as NSString
+        var current = 1
+        var idx = 0
+        while idx < string.length {
+            let lr = string.lineRange(for: NSRange(location: idx, length: 0))
+            if current == line {
+                DispatchQueue.main.async { textView.scrollRangeToVisible(lr) }
+                return
+            }
+            current += 1
+            idx = NSMaxRange(lr)
         }
     }
 
@@ -206,6 +239,7 @@ struct SyntaxTextEditor: NSViewRepresentable {
 
 final class LineNumberTextView: NSTextView {
     static let gutterWidth: CGFloat = 44
+    var executionLine: Int? = nil
 
     private let gutterAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
@@ -323,21 +357,51 @@ final class LineNumberTextView: NSTextView {
             var lineGlyphRange = NSRange()
             let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineGlyphRange)
             let lineCharRange = layoutManager.characterRange(forGlyphRange: lineGlyphRange, actualGlyphRange: nil)
-            
+
             // Only draw line number if this is the first fragment for this line
             // (avoids drawing numbers for wrapped line continuations)
             if !drawnLineStarts.contains(lineCharRange.location) {
                 drawnLineStarts.insert(lineCharRange.location)
-                
-                let y = lineRect.minY + textOrigin.y + (lineRect.height - (gutterAttrs[.font] as! NSFont).capHeight) / 2
+
+                let isExecLine = lineNumber == executionLine
+                let yBase = lineRect.minY + textOrigin.y
+
+                if isExecLine {
+                    // Highlight gutter background for the current execution line
+                    let gutterHighlight = NSRect(
+                        x: bounds.minX, y: yBase,
+                        width: LineNumberTextView.gutterWidth, height: lineRect.height
+                    )
+                    NSColor.systemGreen.withAlphaComponent(0.15).setFill()
+                    gutterHighlight.fill()
+
+                    // Draw ▶ arrow
+                    let arrowAttrs: [NSAttributedString.Key: Any] = [
+                        .font: NSFont.systemFont(ofSize: 9, weight: .bold),
+                        .foregroundColor: NSColor.systemGreen
+                    ]
+                    let arrow = "▶" as NSString
+                    let arrowSize = arrow.size(withAttributes: arrowAttrs)
+                    arrow.draw(at: NSPoint(x: bounds.minX + 4,
+                                          y: yBase + (lineRect.height - arrowSize.height) / 2),
+                               withAttributes: arrowAttrs)
+                }
+
+                let lineFont = gutterAttrs[.font] as! NSFont
+                let lineColor: NSColor = isExecLine ? .systemGreen : .tertiaryLabelColor
+                let lineAttrs: [NSAttributedString.Key: Any] = [
+                    .font: lineFont,
+                    .foregroundColor: lineColor
+                ]
+                let y = yBase + (lineRect.height - lineFont.capHeight) / 2
                 let label = "\(lineNumber)" as NSString
-                let labelSize = label.size(withAttributes: gutterAttrs)
+                let labelSize = label.size(withAttributes: lineAttrs)
                 let x = bounds.minX + LineNumberTextView.gutterWidth - labelSize.width - 8
-                label.draw(at: NSPoint(x: x, y: y), withAttributes: gutterAttrs)
-                
+                label.draw(at: NSPoint(x: x, y: y), withAttributes: lineAttrs)
+
                 lineNumber += 1
             }
-            
+
             glyphIndex = NSMaxRange(lineGlyphRange)
         }
     }

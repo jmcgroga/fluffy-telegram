@@ -11,6 +11,7 @@
 		0F47D59B2F548A4A009CCA90 /* MemoryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5812F548A4A009CCA90 /* MemoryState.swift */; };
 		0F47D59D2F548A4A009CCA90 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */; };
 		0F47D5A22F548A4A009CCA90 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */; };
+		0F47D5A32F548A4A009CCA90 /* LLDBController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5922F548A4A009CCA90 /* LLDBController.swift */; };
 		0F47D5A42F548A4A009CCA90 /* Tutorial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5822F548A4A009CCA90 /* Tutorial.swift */; };
 /* End PBXBuildFile section */
 
@@ -40,6 +41,7 @@
 		0F47D5822F548A4A009CCA90 /* Tutorial.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tutorial.swift; sourceTree = "<group>"; };
 		0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
 		0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
+		0F47D5922F548A4A009CCA90 /* LLDBController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLDBController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -171,6 +173,7 @@
 		0F47D5932F548A4A009CCA90 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				0F47D5922F548A4A009CCA90 /* LLDBController.swift */,
 				0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */,
 				0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */,
 				0F39B95D2F5677D6005B84BA /* TutorialLoader.swift */,
@@ -341,6 +344,7 @@
 				0F47D59D2F548A4A009CCA90 /* SyntaxHighlighter.swift in Sources */,
 				0F39B9622F5677D6005B84BA /* TutorialLoader.swift in Sources */,
 				0F47D5A22F548A4A009CCA90 /* ProcessRunner.swift in Sources */,
+				0F47D5A32F548A4A009CCA90 /* LLDBController.swift in Sources */,
 				0F47D5A42F548A4A009CCA90 /* Tutorial.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

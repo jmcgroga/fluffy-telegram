@@ -179,6 +179,11 @@ struct RegisterRowView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(register.isChanged ? Color.yellow.opacity(0.2) : Color.clear)
+        )
+        .animation(.easeOut(duration: 0.8), value: register.isChanged)
         .help(register.description)
     }
 }
