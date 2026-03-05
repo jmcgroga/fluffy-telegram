@@ -165,17 +165,21 @@ struct RegisterRowView: View {
 
             Spacer()
 
-            // Value (toggle hex/decimal)
-            Button {
-                showDecimal.toggle()
-            } label: {
-                Text(showDecimal ? register.decValue : register.hexValue)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(register.value == 0 ? .tertiary : .primary)
-                    .lineLimit(1)
+            // Value display — NZCV gets flag badges, others get hex/decimal toggle
+            if register.name == "nzcv" {
+                FlagBitsView(value: register.value)
+            } else {
+                Button {
+                    showDecimal.toggle()
+                } label: {
+                    Text(showDecimal ? register.decValue : register.hexValue)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(register.value == 0 ? .tertiary : .primary)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .help("Click to toggle hex/decimal")
             }
-            .buttonStyle(.plain)
-            .help("Click to toggle hex/decimal")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -185,6 +189,41 @@ struct RegisterRowView: View {
         )
         .animation(.easeOut(duration: 0.8), value: register.isChanged)
         .help(register.description)
+    }
+}
+
+// MARK: - NZCV Flag Bits View
+
+struct FlagBitsView: View {
+    let value: UInt64
+
+    // PSTATE NZCV bits: N=31, Z=30, C=29, V=28
+    private var N: Bool { value & (1 << 31) != 0 }
+    private var Z: Bool { value & (1 << 30) != 0 }
+    private var C: Bool { value & (1 << 29) != 0 }
+    private var V: Bool { value & (1 << 28) != 0 }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            flagBadge("N", set: N, tip: "Negative — result was negative")
+            flagBadge("Z", set: Z, tip: "Zero — result was zero")
+            flagBadge("C", set: C, tip: "Carry — unsigned overflow / borrow-out")
+            flagBadge("V", set: V, tip: "oVerflow — signed overflow")
+        }
+    }
+
+    private func flagBadge(_ label: String, set: Bool, tip: String) -> some View {
+        Text(label)
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(set ? Color.white : Color.secondary.opacity(0.4))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(set ? Color.accentColor : Color.secondary.opacity(0.1))
+            )
+            .help(tip + (set ? " (set)" : " (clear)"))
+            .animation(.easeOut(duration: 0.3), value: set)
     }
 }
 

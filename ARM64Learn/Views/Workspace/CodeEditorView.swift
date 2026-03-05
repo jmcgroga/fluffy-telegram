@@ -53,7 +53,9 @@ struct CodeEditorView: View {
             SyntaxTextEditor(
                 text: $appState.currentCode,
                 language: appState.codeLanguage,
-                executionLine: appState.currentExecutionLine
+                executionLine: appState.currentExecutionLine,
+                breakpoints: appState.activeBreakpoints,
+                onBreakpointToggle: { line in appState.toggleBreakpoint(line: line) }
             )
         }
         .background(.windowBackground)
@@ -71,6 +73,8 @@ struct SyntaxTextEditor: NSViewRepresentable {
     @Binding var text: String
     let language: CodeLanguage
     var executionLine: Int? = nil
+    var breakpoints: Set<Int> = []
+    var onBreakpointToggle: ((Int) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -106,7 +110,7 @@ struct SyntaxTextEditor: NSViewRepresentable {
         textView.isAutomaticLinkDetectionEnabled = false
         textView.isContinuousSpellCheckingEnabled = false
         textView.isGrammarCheckingEnabled = false
-        
+
         // Disable text wrapping
         textView.isHorizontallyResizable = true
         textView.isVerticallyResizable = true
@@ -171,6 +175,13 @@ struct SyntaxTextEditor: NSViewRepresentable {
             textView.executionLine = executionLine
             textView.setNeedsDisplay(textView.bounds)
         }
+
+        // Sync breakpoints and callback
+        if textView.breakpoints != breakpoints {
+            textView.breakpoints = breakpoints
+            textView.setNeedsDisplay(textView.bounds)
+        }
+        textView.onBreakpointToggle = onBreakpointToggle
     }
 
     private func scrollToLine(_ line: Int, in textView: NSTextView) {
@@ -240,6 +251,8 @@ struct SyntaxTextEditor: NSViewRepresentable {
 final class LineNumberTextView: NSTextView {
     static let gutterWidth: CGFloat = 44
     var executionLine: Int? = nil
+    var breakpoints: Set<Int> = []
+    var onBreakpointToggle: ((Int) -> Void)? = nil
 
     private let gutterAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
@@ -248,13 +261,13 @@ final class LineNumberTextView: NSTextView {
 
     override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
         super.init(frame: frameRect, textContainer: container)
-        
+
         // Shift the text container right to make room for the gutter
         textContainerInset = NSSize(width: LineNumberTextView.gutterWidth + 8, height: 12)
-        
+
         // We handle all background drawing ourselves in draw(_:)
         drawsBackground = true
-        
+
         // Observe text storage changes to trigger gutter redraws
         NotificationCenter.default.addObserver(
             self,
@@ -265,20 +278,67 @@ final class LineNumberTextView: NSTextView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
-    
+
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
-    
+
     @objc private func textStorageDidChange(_ notification: Notification) {
         // Redraw gutter when text changes
         setNeedsDisplay(bounds)
     }
-    
+
     override func didChangeText() {
         super.didChangeText()
         // Trigger a redraw of the line numbers
         setNeedsDisplay(bounds)
+    }
+
+    // MARK: - Mouse handling for breakpoint gutter clicks
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        // Only intercept clicks inside the gutter area
+        if point.x < LineNumberTextView.gutterWidth, let lineNumber = lineNumber(at: point) {
+            onBreakpointToggle?(lineNumber)
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    /// Convert a point (in the text view's coordinate space) to a 1-based line number.
+    private func lineNumber(at point: NSPoint) -> Int? {
+        guard let layoutManager = layoutManager,
+              let container = textContainer else { return nil }
+        let textOrigin = textContainerOrigin
+        let visibleRect = enclosingScrollView?.documentVisibleRect ?? bounds
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: container)
+
+        if glyphRange.length == 0 || string.isEmpty { return 1 }
+
+        let charRange = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        let nsString = string as NSString
+        let textBeforeVisible = nsString.substring(to: charRange.location)
+        var lineNumber = textBeforeVisible.components(separatedBy: "\n").count
+
+        var drawnLineStarts = Set<Int>()
+        var glyphIndex = glyphRange.location
+        while glyphIndex < NSMaxRange(glyphRange) {
+            var lineGlyphRange = NSRange()
+            let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineGlyphRange)
+            let lineCharRange = layoutManager.characterRange(forGlyphRange: lineGlyphRange, actualGlyphRange: nil)
+
+            if !drawnLineStarts.contains(lineCharRange.location) {
+                drawnLineStarts.insert(lineCharRange.location)
+                let yBase = lineRect.minY + textOrigin.y
+                if point.y >= yBase && point.y < yBase + lineRect.height {
+                    return lineNumber
+                }
+                lineNumber += 1
+            }
+            glyphIndex = NSMaxRange(lineGlyphRange)
+        }
+        return nil
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -292,7 +352,7 @@ final class LineNumberTextView: NSTextView {
         )
         NSColor(white: 0.12, alpha: 1).setFill()
         gutterRect.fill()
-        
+
         // Editor background for text area
         let textAreaRect = NSRect(
             x: bounds.minX + LineNumberTextView.gutterWidth,
@@ -302,7 +362,7 @@ final class LineNumberTextView: NSTextView {
         )
         (NSColor(named: "editorBackground") ?? .textBackgroundColor).setFill()
         textAreaRect.fill()
-        
+
         // 2. Draw text content WITHOUT backgrounds
         // Temporarily disable background drawing to avoid overdrawing our custom backgrounds
         NSGraphicsContext.saveGraphicsState()
@@ -332,7 +392,7 @@ final class LineNumberTextView: NSTextView {
         let textOrigin = textContainerOrigin
         let visibleRect = enclosingScrollView?.documentVisibleRect ?? bounds
         let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: container)
-        
+
         // Handle empty document
         if glyphRange.length == 0 || string.isEmpty {
             let label = "1" as NSString
@@ -351,7 +411,7 @@ final class LineNumberTextView: NSTextView {
 
         // Track which character indices we've drawn line numbers for
         var drawnLineStarts = Set<Int>()
-        
+
         var glyphIndex = glyphRange.location
         while glyphIndex < NSMaxRange(glyphRange) {
             var lineGlyphRange = NSRange()
@@ -364,6 +424,7 @@ final class LineNumberTextView: NSTextView {
                 drawnLineStarts.insert(lineCharRange.location)
 
                 let isExecLine = lineNumber == executionLine
+                let isBreakpoint = breakpoints.contains(lineNumber)
                 let yBase = lineRect.minY + textOrigin.y
 
                 if isExecLine {
@@ -385,10 +446,21 @@ final class LineNumberTextView: NSTextView {
                     arrow.draw(at: NSPoint(x: bounds.minX + 4,
                                           y: yBase + (lineRect.height - arrowSize.height) / 2),
                                withAttributes: arrowAttrs)
+                } else if isBreakpoint {
+                    // Draw red ● breakpoint dot in the gutter
+                    let dotAttrs: [NSAttributedString.Key: Any] = [
+                        .font: NSFont.systemFont(ofSize: 10, weight: .bold),
+                        .foregroundColor: NSColor.systemRed
+                    ]
+                    let dot = "●" as NSString
+                    let dotSize = dot.size(withAttributes: dotAttrs)
+                    dot.draw(at: NSPoint(x: bounds.minX + 4,
+                                        y: yBase + (lineRect.height - dotSize.height) / 2),
+                             withAttributes: dotAttrs)
                 }
 
                 let lineFont = gutterAttrs[.font] as! NSFont
-                let lineColor: NSColor = isExecLine ? .systemGreen : .tertiaryLabelColor
+                let lineColor: NSColor = isExecLine ? .systemGreen : (isBreakpoint ? .systemRed : .tertiaryLabelColor)
                 let lineAttrs: [NSAttributedString.Key: Any] = [
                     .font: lineFont,
                     .foregroundColor: lineColor
@@ -410,7 +482,7 @@ final class LineNumberTextView: NSTextView {
 #Preview {
     @Previewable @State var sampleCode = (1...100).map { "Line \($0)" }.joined(separator: "\n")
     @Previewable @StateObject var previewAppState = AppState()
-    
+
     CodeEditorView()
         .environmentObject(previewAppState)
         .onAppear {

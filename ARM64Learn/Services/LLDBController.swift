@@ -48,7 +48,7 @@ struct ParsedFrame {
 
 /// Wraps an LLDBSession and provides:
 ///  - A prompt-delimited command/response correlator
-///  - Automatic register + backtrace refresh after every stop
+///  - Automatic register + backtrace + stack-memory refresh after every stop
 ///  - Program stdin forwarding when the inferior is running
 ///  - Two-tier timeout: 5 s for instant commands; no timeout for run/continue
 final class LLDBController: ObservableObject {
@@ -63,6 +63,7 @@ final class LLDBController: ObservableObject {
     var onRegistersUpdated: (([String: UInt64]) -> Void)?
     var onFrameUpdated: ((ParsedFrame) -> Void)?
     var onProcessTerminated: ((Int32) -> Void)?
+    var onMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
     /// Raw output forwarded to the console display (unchanged).
     var forwardToDisplay: ((String) -> Void)?
 
@@ -77,7 +78,6 @@ final class LLDBController: ObservableObject {
     func attach(to session: LLDBSession) {
         self.session = session
         sessionState = .launching
-        // Wire the controller output handler on the session
         session.controllerOutputHandler = { [weak self] chunk in
             self?.receiveOutput(chunk)
         }
@@ -89,7 +89,6 @@ final class LLDBController: ObservableObject {
         _ = await sendAndAwait("breakpoint set --name _main")
         sessionState = .running
         session?.send("run\n")
-        // Open-ended wait: no timeout; ends when stop-reason prompt arrives
         let response = await awaitPrompt()
         handleStopResponse(response)
     }
@@ -120,7 +119,6 @@ final class LLDBController: ObservableObject {
         guard sessionState == .ready else { return }
         await MainActor.run { self.sessionState = .running }
         session?.send("process continue\n")
-        // Open-ended wait — inferior may block on stdin
         let response = await awaitPrompt()
         handleStopResponse(response)
     }
@@ -152,10 +150,8 @@ final class LLDBController: ObservableObject {
     private func issueStepCommand(_ command: String) async {
         await MainActor.run { self.sessionState = .running }
         session?.send(command + "\n")
-        // Open-ended wait until LLDB reports stopped
         let response = await awaitPrompt()
         handleStopResponse(response)
-        // Auto-refresh register and frame state
         await refreshState()
     }
 
@@ -174,7 +170,6 @@ final class LLDBController: ObservableObject {
         outputBuffer += chunk
         forwardToDisplay?(chunk)
 
-        // Check for process exit before prompt detection
         if let code = LLDBOutputParser.detectProcessExit(in: outputBuffer) {
             let buffer = outputBuffer
             outputBuffer = ""
@@ -187,12 +182,10 @@ final class LLDBController: ObservableObject {
             return
         }
 
-        // "(lldb) " with trailing space = end of a response
         while let range = outputBuffer.range(of: "(lldb) ") {
             let response = String(outputBuffer[..<range.lowerBound])
             outputBuffer = String(outputBuffer[range.upperBound...])
 
-            // Transition from .launching → .ready on the very first prompt
             if case .launching = sessionState {
                 Task { @MainActor in self.sessionState = .ready }
             }
@@ -214,9 +207,15 @@ final class LLDBController: ObservableObject {
 
         // 2. Current frame / source line
         let btOut = await sendAndAwait("bt 1")
-        if let frame = LLDBOutputParser.parseBacktrace(from: btOut,
-                                                        stopReason: lastStopReason) {
+        if let frame = LLDBOutputParser.parseBacktrace(from: btOut, stopReason: lastStopReason) {
             onFrameUpdated?(frame)
+        }
+
+        // 3. Live stack contents (16 quadwords starting at $sp)
+        let memOut = await sendAndAwait("memory read $sp --count 16 --size 8")
+        let entries = LLDBOutputParser.parseMemoryRead(from: memOut)
+        if !entries.isEmpty {
+            onMemoryUpdated?(entries)
         }
     }
 
@@ -243,7 +242,6 @@ final class LLDBController: ObservableObject {
 
     private func awaitPrompt() async -> String {
         await withCheckedContinuation { continuation in
-            // If there's already a buffered prompt response waiting, deliver it immediately
             if let range = outputBuffer.range(of: "(lldb) ") {
                 let response = String(outputBuffer[..<range.lowerBound])
                 outputBuffer = String(outputBuffer[range.upperBound...])
@@ -336,7 +334,8 @@ enum LLDBOutputParser {
 
     // MARK: memory read
 
-    /// Parse "memory read --size 8 --count N $sp" output.
+    /// Parse "memory read $sp --count N --size 8" output into address/value pairs.
+    /// Example line: "0x16fdef100: 0x000000016fdeffb8 0x0000000000000000"
     static func parseMemoryRead(from output: String) -> [(address: UInt64, value: UInt64)] {
         var result: [(UInt64, UInt64)] = []
         guard let regex = try? NSRegularExpression(

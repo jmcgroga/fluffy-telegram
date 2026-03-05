@@ -134,6 +134,9 @@ class AppState: ObservableObject {
     @Published var currentExecutionLine: Int? = nil
     @Published var currentExecutionFile: String? = nil
     @Published var lastChangedRegisters: Set<String> = []
+    @Published var lastRegisterChangeSummary: String = ""
+    @Published var liveStackEntries: [(address: UInt64, value: UInt64)] = []
+    @Published var activeBreakpoints: Set<Int> = []
 
     var debuggerState: DebuggerSessionState { lldbController.sessionState }
     var lldbIsPaused: Bool { lldbController.sessionState == .ready }
@@ -196,6 +199,9 @@ class AppState: ObservableObject {
             currentExecutionLine = nil
             currentExecutionFile = nil
             lastChangedRegisters = []
+            lastRegisterChangeSummary = ""
+            liveStackEntries = []
+            activeBreakpoints = []
 
             let session = LLDBSession(binaryPath: path)
 
@@ -216,7 +222,14 @@ class AppState: ObservableObject {
                 Task { @MainActor in self?.applyFrameUpdate(frame) }
             }
             controller.onProcessTerminated = { [weak self] _ in
-                Task { @MainActor in self?.currentExecutionLine = nil }
+                Task { @MainActor in
+                    self?.currentExecutionLine = nil
+                    self?.liveStackEntries = []
+                    self?.lastRegisterChangeSummary = ""
+                }
+            }
+            controller.onMemoryUpdated = { [weak self] entries in
+                Task { @MainActor in self?.liveStackEntries = entries }
             }
 
             controller.attach(to: session)
@@ -243,6 +256,10 @@ class AppState: ObservableObject {
                 memoryState.registers[i].isChanged = lastChangedRegisters.contains(memoryState.registers[i].name)
             }
         }
+        lastRegisterChangeSummary = lastChangedRegisters.sorted().compactMap { name -> String? in
+            guard let v = values[name] else { return nil }
+            return "\(name): \(String(format: "0x%X", v))"
+        }.joined(separator: "  ·  ")
     }
 
     func applyFrameUpdate(_ frame: ParsedFrame) {
@@ -287,6 +304,20 @@ class AppState: ObservableObject {
         lldbController.terminate()
         lldbSession = nil
         currentExecutionLine = nil
+    }
+
+    // MARK: - Breakpoints
+
+    func toggleBreakpoint(line: Int) {
+        if activeBreakpoints.contains(line) {
+            activeBreakpoints.remove(line)
+            let file = currentExecutionFile ?? "source.\(codeLanguage.fileExtension)"
+            Task { await lldbController.sendRawCommand("breakpoint clear --line \(line) --file \(file)") }
+        } else {
+            activeBreakpoints.insert(line)
+            let file = currentExecutionFile ?? "source.\(codeLanguage.fileExtension)"
+            Task { await lldbController.sendRawCommand("breakpoint set --line \(line) --file \(file)") }
+        }
     }
 
     // MARK: - LLDB Commands

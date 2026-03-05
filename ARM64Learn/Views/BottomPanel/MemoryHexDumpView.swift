@@ -26,7 +26,9 @@ struct MemoryHexDumpView: View {
             
             // Hex dump content
             ScrollView {
-                if let seg = segment {
+                if segmentName == "STACK", !appState.liveStackEntries.isEmpty {
+                    LiveStackDumpContent(entries: appState.liveStackEntries)
+                } else if let seg = segment {
                     HexDumpContent(
                         segment: seg,
                         startAddress: startAddress == 0 ? seg.startAddress : startAddress,
@@ -114,6 +116,53 @@ extension MemorySegment {
         case "__TEXT": return "doc.text"
         default: return "questionmark.square"
         }
+    }
+}
+
+// MARK: - Live Stack Dump (from LLDB memory read)
+
+/// Displays live stack contents read from LLDB (`memory read $sp --count 16 --size 8`).
+/// Each entry is an 8-byte quadword; we expand into bytes for the standard hex dump rows.
+struct LiveStackDumpContent: View {
+    let entries: [(address: UInt64, value: UInt64)]
+
+    /// Convert each 8-byte quadword into a `HexDumpRow`-compatible byte array (little-endian).
+    private func bytes(for value: UInt64) -> [UInt8] {
+        (0..<8).map { i in UInt8((value >> (i * 8)) & 0xFF) }
+    }
+
+    var body: some View {
+        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+            Section {
+                ForEach(Array(entries.enumerated()), id: \.offset) { idx, entry in
+                    HexDumpRow(
+                        address: entry.address,
+                        data: bytes(for: entry.value),
+                        bytesPerRow: 8
+                    )
+                    if idx < entries.count - 1 {
+                        Divider().padding(.leading, 130)
+                    }
+                }
+            } header: {
+                VStack(spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "livephoto")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                        Text("Live stack — \(entries.count) quadwords from $sp")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.green.opacity(0.06))
+                    HexDumpHeader(bytesPerRow: 8)
+                }
+            }
+        }
+        .padding(12)
     }
 }
 
