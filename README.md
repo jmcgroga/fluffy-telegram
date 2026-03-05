@@ -1,15 +1,74 @@
 # ARM64Learn
 
-An interactive macOS IDE for learning ARM64 assembly language. Write ARM64 (or C) code, compile and run it instantly, step through it in LLDB, and follow structured tutorials — all in one app.
+An interactive macOS IDE for learning ARM64 assembly language. Write ARM64 (or C) code, compile and run it instantly, step through it with a full LLDB debugger, and follow structured tutorials — all in one app.
 
 ## Features
 
-- **Structured tutorials** — 10 built-in lessons covering registers, memory addressing, data movement, arithmetic, logical operations, branches, the stack and functions, SIMD/NEON, and C interop
-- **Live code editor** — Syntax-highlighted editor with ARM64 assembly and C support
-- **One-click compile & run** — Compiles with `clang -arch arm64` via Xcode Command Line Tools and shows output immediately
-- **Integrated LLDB debugger** — Build with debug symbols and drop into an interactive LLDB session without leaving the app
-- **Embedded terminal** — Full login-shell terminal panel for running arbitrary commands
-- **Memory visualization** — Diagram panel that highlights relevant memory segments for each tutorial
+### Editor
+- **Syntax-highlighted code editor** — ARM64 assembly and C modes, switchable via a segmented control in the toolbar
+- **Line number gutter** — Dark gutter with line numbers displayed alongside the code
+- **Execution line indicator** — A green `▶` arrow highlights the current instruction during debugging
+- **Breakpoint gutter** — Click any line number to toggle a breakpoint; active breakpoints show a red `●` dot and are sent to LLDB automatically
+
+### Tutorials
+- **10 built-in lessons** covering registers, memory addressing, data movement, arithmetic, logical operations, branches, the stack and functions, SIMD/NEON, and C interop
+- Each tutorial loads sample code directly into the editor so you can run and modify it immediately
+- The tutorial panel can be shown or hidden independently of the editor
+
+### Compilation
+- **One-click Build & Run** — Compiles with `clang -arch arm64` via Xcode Command Line Tools and streams output to the Build Output panel
+- **Build & Debug** — Compiles with debug symbols and launches an LLDB session without leaving the app
+
+### LLDB Debugger
+- **Step controls** — Inst (single instruction), Over (step over), Into (step into), Out (step out), Continue, Pause, Stop
+- **Live register panel** — All ARM64 registers grouped into collapsible categories (General, Special, Flags); changed registers are highlighted in yellow after each step; values toggle between hex and decimal on click
+- **NZCV flag badges** — The `nzcv` register shows N / Z / C / V as colored badges (lit when set) instead of a raw hex value
+- **Register change chip** — A summary bar below the step controls shows exactly which registers changed after the last step (e.g. `x0: 0x2A  ·  sp: 0x16F...`)
+- **Raw LLDB console** — Full scrollable LLDB output with a command input row for arbitrary LLDB commands
+- **Program stdin** — When the inferior is running and waiting for input, the input row switches to a program-input prompt
+
+### Memory Panels
+The bottom panel has four memory tabs that display an xxd-style hex dump:
+
+| Tab | Contents |
+|-----|----------|
+| **Stack** | Live stack memory read from LLDB (`memory read $sp`) during a debug session; falls back to a simulated layout when no session is active |
+| **Heap** | Simulated heap segment |
+| **\_\_DATA** | Simulated data segment |
+| **\_\_TEXT** | Simulated text segment with sample ARM64 instructions |
+
+### Terminal
+- **Embedded shell** — Full login-shell terminal panel (`$SHELL -l`) for running arbitrary commands alongside your code
+
+## Layout
+
+The app uses a resizable split-pane layout:
+
+```
+┌─ Tutorial list (sidebar) ──────────────────────────────────────────────────┐
+│                                                                             │
+│  ┌─ Tutorial content ─┐  ┌─ Code editor ──────┐  ┌─ Register panel ──┐   │
+│  │                    │  │  (gutter + editor) │  │  General          │   │
+│  │  Markdown lesson   │  │                    │  │  Special          │   │
+│  │                    │  │                    │  │  Flags / NZCV     │   │
+│  └────────────────────┘  └────────────────────┘  └───────────────────┘   │
+│                           ┌─ Bottom panel ─────────────────────────────┐  │
+│                           │  Output │ LLDB │ Terminal │ Stack │ …      │  │
+│                           └────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+Each panel can be toggled independently from the toolbar.
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Build & Run | `⌘B` |
+| Toggle tutorial list sidebar | `⌃⌘S` |
+| Toggle tutorial panel | `⌥⌘1` |
+| Toggle register panel | `⌥⌘2` |
+| Toggle bottom panel | `⌥⌘3` |
 
 ## Requirements
 
@@ -27,18 +86,16 @@ open ARM64Learn/ARM64Learn.xcodeproj
 
 Select the **ARM64Learn** scheme, set the destination to **My Mac**, and press **⌘R**.
 
-## Usage
-
-| Action | Shortcut |
-|--------|----------|
-| Build & Run | `⌘B` |
-| Build & Debug (LLDB) | `⌘⇧B` |
+## Typical Workflow
 
 1. Pick a tutorial from the sidebar.
-2. Read the lesson in the left panel and study the sample code in the editor.
-3. Modify the code and press **Build & Run** to see the output in the bottom panel.
-4. Press **Debug** to compile with debug symbols and open an interactive LLDB session.
-5. Use the **Terminal** tab for a full shell alongside your code.
+2. Read the lesson in the tutorial panel; the sample code loads automatically into the editor.
+3. Edit the code and press **Build & Run** (`⌘B`) to see the output.
+4. Press **Debug** to compile with debug symbols and open an LLDB session.
+5. Click line numbers in the gutter to set breakpoints before starting.
+6. Use **Step** / **Over** / **Into** / **Out** to walk through instructions.
+7. Watch the register panel for live values; changed registers are highlighted and a summary chip appears in the LLDB panel.
+8. Switch to the **Stack** tab to inspect live stack memory at `$sp`.
 
 ## Tutorials
 
@@ -59,12 +116,19 @@ Select the **ARM64Learn** scheme, set the destination to **My Mac**, and press *
 
 ```
 ARM64Learn/
-├── ARM64Learn/        # App source (AppState, ContentView, entry point)
-├── Models/            # Tutorial and MemoryState data models
-├── Views/             # SwiftUI view components
-├── Services/          # Compilation, LLDB, terminal, syntax highlighting
+├── ARM64Learn/              # App entry point, AppState (single source of truth)
+├── Models/                  # Tutorial, TutorialCategory, MemoryState, Register models
+├── Views/
+│   ├── Workspace/           # Toolbar, sidebar, tutorial panel, code editor
+│   ├── Registers/           # Register panel with collapsible categories and NZCV badges
+│   └── BottomPanel/         # Build output, LLDB debugger, terminal, memory hex dump
+├── Services/
+│   ├── LLDBController.swift # LLDB subprocess — stepping, register/memory reads, breakpoints
+│   ├── ProcessRunner.swift  # clang compilation, binary execution, terminal session
+│   ├── TutorialLoader.swift # Loads .md tutorials from the app bundle
+│   └── SyntaxHighlighter.swift # ARM64/C syntax highlighting (NSAttributedString)
 └── Resources/
-    └── Tutorials/     # Markdown lesson files
+    └── Tutorials/           # 10 Markdown lesson files (01–10)
 ```
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture and development notes.
