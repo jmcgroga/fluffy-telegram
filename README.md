@@ -112,23 +112,3 @@ Select the **ARM64Learn** scheme, set the destination to **My Mac**, and press *
 | 09 | SIMD / NEON |
 | 10 | Interfacing with C |
 
-## Project Structure
-
-```
-ARM64Learn/
-├── ARM64Learn/              # App entry point, AppState (single source of truth)
-├── Models/                  # Tutorial, TutorialCategory, MemoryState, Register models
-├── Views/
-│   ├── Workspace/           # Toolbar, sidebar, tutorial panel, code editor
-│   ├── Registers/           # Register panel with collapsible categories and NZCV badges
-│   └── BottomPanel/         # Build output, LLDB debugger, terminal, memory hex dump
-├── Services/
-│   ├── LLDBController.swift # LLDB subprocess — stepping, register/memory reads, breakpoints
-│   ├── ProcessRunner.swift  # clang compilation, binary execution, terminal session
-│   ├── TutorialLoader.swift # Loads .md tutorials from the app bundle
-│   └── SyntaxHighlighter.swift # ARM64/C syntax highlighting (NSAttributedString)
-└── Resources/
-    └── Tutorials/           # 10 Markdown lesson files (01–10)
-```
-
-See [CLAUDE.md](CLAUDE.md) for detailed architecture and development notes.
