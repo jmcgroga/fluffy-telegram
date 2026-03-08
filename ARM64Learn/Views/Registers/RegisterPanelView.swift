@@ -165,9 +165,11 @@ struct RegisterRowView: View {
 
             Spacer()
 
-            // Value display — NZCV gets flag badges, others get hex/decimal toggle
+            // Value display — NZCV and FPSR get flag badges, others get hex/decimal toggle
             if register.name == "nzcv" {
                 FlagBitsView(value: register.value)
+            } else if register.name == "fpsr" {
+                FPSRFlagsView(value: register.value)
             } else {
                 Button {
                     showDecimal.toggle()
@@ -221,6 +223,43 @@ struct FlagBitsView: View {
             .background(
                 RoundedRectangle(cornerRadius: 3)
                     .fill(set ? Color.accentColor : Color.secondary.opacity(0.1))
+            )
+            .help(tip + (set ? " (set)" : " (clear)"))
+            .animation(.easeOut(duration: 0.3), value: set)
+    }
+}
+
+// MARK: - FPSR Flag Bits View
+
+struct FPSRFlagsView: View {
+    let value: UInt64
+    
+    // Exception flags (bits 0-4) - these are "sticky" cumulative flags
+    private var IOC: Bool { value & (1 << 0) != 0 }  // Invalid Operation
+    private var DZC: Bool { value & (1 << 1) != 0 }  // Divide by Zero
+    private var OFC: Bool { value & (1 << 2) != 0 }  // Overflow
+    private var UFC: Bool { value & (1 << 3) != 0 }  // Underflow
+    private var IXC: Bool { value & (1 << 4) != 0 }  // Inexact
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            flagBadge("IO", set: IOC, tip: "Invalid Operation", color: .red)
+            flagBadge("DZ", set: DZC, tip: "Divide by Zero", color: .red)
+            flagBadge("OF", set: OFC, tip: "Overflow", color: .orange)
+            flagBadge("UF", set: UFC, tip: "Underflow", color: .orange)
+            flagBadge("IX", set: IXC, tip: "Inexact", color: .yellow)
+        }
+    }
+    
+    private func flagBadge(_ label: String, set: Bool, tip: String, color: Color) -> some View {
+        Text(label)
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .foregroundStyle(set ? Color.white : Color.secondary.opacity(0.4))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(set ? color : Color.secondary.opacity(0.1))
             )
             .help(tip + (set ? " (set)" : " (clear)"))
             .animation(.easeOut(duration: 0.3), value: set)

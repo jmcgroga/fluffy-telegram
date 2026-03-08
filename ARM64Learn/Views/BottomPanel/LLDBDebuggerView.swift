@@ -10,24 +10,6 @@ struct LLDBDebuggerView: View {
             // Stepping toolbar — always visible in the LLDB tab
             DebuggerControlBar()
 
-            // Register change summary chip — shown after each step when paused
-            if appState.lldbIsPaused, !appState.lastRegisterChangeSummary.isEmpty {
-                HStack {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                    Text(appState.lastRegisterChangeSummary)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Spacer()
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(Color.yellow.opacity(0.08))
-                .transition(.opacity)
-            }
-
             Divider()
 
             // Raw LLDB output

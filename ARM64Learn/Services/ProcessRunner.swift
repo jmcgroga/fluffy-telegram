@@ -94,6 +94,13 @@ final class ProcessRunner {
             args += ["-g"]
         }
 
+        // Get SDK path
+        let sdkResult = await shell("/usr/bin/xcrun", args: ["--show-sdk-path"])
+        let sdkPath = sdkResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sdkPath.isEmpty && sdkResult.exitCode == 0 {
+            args += ["-isysroot", sdkPath]
+        }
+
         // Locate clang via xcrun
         let xcrunResult = await shell("/usr/bin/xcrun", args: ["--find", "clang"])
         let clangPath = xcrunResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -175,27 +182,31 @@ final class LLDBSession {
         process.standardOutput = stdout
         process.standardError  = stderr
 
+        // Capture handlers outside of @Sendable closures
+        let displayHandler = outputHandler
+        let parserHandler = controllerOutputHandler
+
         // Stream output to display handler and controller parser
-        stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        stdout.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            self?.controllerOutputHandler?(text)   // parser (sync, before main queue)
+            parserHandler?(text)   // parser (sync, before main queue)
             DispatchQueue.main.async {
-                self?.outputHandler?(text)
+                displayHandler?(text)
             }
         }
-        stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        stderr.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            self?.controllerOutputHandler?(text)   // parser
+            parserHandler?(text)   // parser
             DispatchQueue.main.async {
-                self?.outputHandler?(text)
+                displayHandler?(text)
             }
         }
 
-        process.terminationHandler = { [weak self] _ in
+        process.terminationHandler = { _ in
             DispatchQueue.main.async {
-                self?.outputHandler?("\n[LLDB session ended]\n")
+                displayHandler?("\n[LLDB session ended]\n")
             }
         }
 

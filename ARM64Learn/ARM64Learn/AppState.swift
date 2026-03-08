@@ -133,9 +133,15 @@ class AppState: ObservableObject {
     // Debugger execution state
     @Published var currentExecutionLine: Int? = nil
     @Published var currentExecutionFile: String? = nil
+    @Published var debugSourceFile: String? = nil  // Track the actual debug source file name
     @Published var lastChangedRegisters: Set<String> = []
     @Published var lastRegisterChangeSummary: String = ""
     @Published var liveStackEntries: [(address: UInt64, value: UInt64)] = []
+    @Published var liveDataEntries: [(address: UInt64, value: UInt64)] = []
+    @Published var liveTextEntries: [(address: UInt64, value: UInt64)] = []
+    @Published var liveHeapData: [UInt8] = []
+    @Published var liveDataSegmentData: [UInt8] = []
+    @Published var liveTextSegmentData: [UInt8] = []
     @Published var activeBreakpoints: Set<Int> = []
 
     var debuggerState: DebuggerSessionState { lldbController.sessionState }
@@ -198,38 +204,42 @@ class AppState: ObservableObject {
             // Reset debugger state
             currentExecutionLine = nil
             currentExecutionFile = nil
+            debugSourceFile = "source_debug.\(codeLanguage.fileExtension)"  // Track the debug source file
             lastChangedRegisters = []
             lastRegisterChangeSummary = ""
             liveStackEntries = []
+            liveDataEntries = []
+            liveTextEntries = []
+            liveHeapData = []
+            liveDataSegmentData = []
+            liveTextSegmentData = []
             activeBreakpoints = []
 
             let session = LLDBSession(binaryPath: path)
 
-            // Wire display output
-            session.outputHandler = { [weak self] text in
-                self?.lldbOutput += text
-            }
-
-            // Wire LLDBController
+            // Wire LLDBController (callbacks are already called on MainActor from controller)
             let controller = LLDBController()
             controller.forwardToDisplay = { [weak self] text in
-                Task { @MainActor in self?.lldbOutput += text }
+                self?.lldbOutput += text
             }
             controller.onRegistersUpdated = { [weak self] values in
-                Task { @MainActor in self?.applyRegisterUpdate(values) }
+                self?.applyRegisterUpdate(values)
             }
             controller.onFrameUpdated = { [weak self] frame in
-                Task { @MainActor in self?.applyFrameUpdate(frame) }
+                self?.applyFrameUpdate(frame)
             }
             controller.onProcessTerminated = { [weak self] _ in
-                Task { @MainActor in
-                    self?.currentExecutionLine = nil
-                    self?.liveStackEntries = []
-                    self?.lastRegisterChangeSummary = ""
-                }
+                self?.currentExecutionLine = nil
+                self?.liveStackEntries = []
+                self?.liveDataEntries = []
+                self?.liveTextEntries = []
+                self?.lastRegisterChangeSummary = ""
             }
-            controller.onMemoryUpdated = { [weak self] entries in
-                Task { @MainActor in self?.liveStackEntries = entries }
+            controller.onStackMemoryUpdated = { [weak self] entries in
+                self?.liveStackEntries = entries
+            }
+            controller.onDataMemoryUpdated = { [weak self] entries in
+                self?.liveDataEntries = entries
             }
 
             controller.attach(to: session)
@@ -237,7 +247,10 @@ class AppState: ObservableObject {
             lldbSession = session
             lldbController = controller
 
-            await controller.launchAndBreakAtMain()
+            await controller.launchAndBreakAtMain(
+                breakpointLines: Array(activeBreakpoints),
+                sourceFile: debugSourceFile
+            )
         } else {
             lldbOutput = "Build failed. Fix errors before debugging.\n\n" + output
             activeBottomTab = .output
@@ -256,10 +269,6 @@ class AppState: ObservableObject {
                 memoryState.registers[i].isChanged = lastChangedRegisters.contains(memoryState.registers[i].name)
             }
         }
-        lastRegisterChangeSummary = lastChangedRegisters.sorted().compactMap { name -> String? in
-            guard let v = values[name] else { return nil }
-            return "\(name): \(String(format: "0x%X", v))"
-        }.joined(separator: "  ·  ")
     }
 
     func applyFrameUpdate(_ frame: ParsedFrame) {
@@ -309,14 +318,19 @@ class AppState: ObservableObject {
     // MARK: - Breakpoints
 
     func toggleBreakpoint(line: Int) {
+        // Use the debug source file name if available, otherwise fall back
+        let file = debugSourceFile ?? "source_debug.\(codeLanguage.fileExtension)"
+        
         if activeBreakpoints.contains(line) {
             activeBreakpoints.remove(line)
-            let file = currentExecutionFile ?? "source.\(codeLanguage.fileExtension)"
-            Task { await lldbController.sendRawCommand("breakpoint clear --line \(line) --file \(file)") }
+            Task {
+                await lldbController.removeBreakpoint(file: file, line: line)
+            }
         } else {
             activeBreakpoints.insert(line)
-            let file = currentExecutionFile ?? "source.\(codeLanguage.fileExtension)"
-            Task { await lldbController.sendRawCommand("breakpoint set --line \(line) --file \(file)") }
+            Task {
+                await lldbController.addBreakpoint(file: file, line: line)
+            }
         }
     }
 

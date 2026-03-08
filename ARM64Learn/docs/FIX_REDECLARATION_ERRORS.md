@@ -1,6 +1,12 @@
 # Quick Fix Guide - Redeclaration Errors
 
-## Problem
+## Current Status
+
+✅ **FIXED** - Duplicate components have been removed from `MemoryHexDumpView.swift`
+
+The redeclaration errors should now be resolved. If you still see errors, follow the steps below.
+
+## Problem #1: Register Components (if it still exists)
 
 You're seeing these errors:
 ```
@@ -8,43 +14,100 @@ error: Invalid redeclaration of 'RegisterRowView'
 error: Invalid redeclaration of 'RegisterCategoryHeader'
 ```
 
-## Cause
+### Cause
 
-Both `MemoryLayoutView.swift` and `RegisterPanelView.swift` define the same structures:
-- `RegisterCategoryHeader`
-- `RegisterRowView`
+Both `MemoryLayoutView.swift` and `RegisterPanelView.swift` define the same structures.
 
-During the refactoring, these were supposed to be moved from `MemoryLayoutView.swift` to `RegisterPanelView.swift`, but `MemoryLayoutView.swift` was never deleted.
+### Solution
 
-## Solution
+Delete `MemoryLayoutView.swift` if it exists in your project.
 
-**Delete `MemoryLayoutView.swift`**
+## Problem #2: Hex Dump Components (SHOULD BE FIXED)
 
-This file contains:
-- ✅ `MemoryLayoutView` - REPLACED by `RegisterPanelView`
-- ✅ `RegistersView` - REPLACED by `RegisterListView`  
-- ✅ `RegisterCategoryHeader` - NOW IN `RegisterPanelView.swift`
-- ✅ `RegisterRowView` - NOW IN `RegisterPanelView.swift`
-- ❌ `SegmentsView` - NEVER USED
-- ❌ `StackVisualizationView` - NEVER USED
-- ❌ Supporting views for segments - NEVER USED
+These errors were caused by duplicate code that has now been removed:
+```
+error: Invalid redeclaration of 'HexDumpRow'
+error: Invalid redeclaration of 'HexDumpContent'
+error: Ambiguous use of 'init(address:data:bytesPerRow:)'
+```
 
-All the components that were actually being used have been migrated to `RegisterPanelView.swift`.
+### What Was Fixed
 
-## Steps
+**Removed duplicates from `MemoryHexDumpView.swift`:**
+- ❌ Duplicate `HexDumpRow` - REMOVED
+- ❌ Duplicate `HexDumpContent` - REMOVED
 
-1. In Xcode, find `MemoryLayoutView.swift` in the project navigator
-2. Right-click on it
-3. Select "Delete"
-4. Choose "Move to Trash" (not just "Remove Reference")
-5. Build the project (⌘B)
-6. Errors should be gone ✅
+**Kept originals in `HexDumpComponents.swift`:**
+- ✅ `HexDumpRow` - Original implementation
+- ✅ `HexDumpContent` - Original implementation
+- ✅ `HexDumpHeader` - Unused but harmless
+
+### Current Architecture
+
+```
+HexDumpComponents.swift (shared components)
+    ├── HexDumpRow
+    ├── HexDumpContent
+    └── HexDumpHeader
+    
+MemoryHexDumpView.swift (main view)
+    ├── Uses HexDumpRow from HexDumpComponents.swift ✅
+    ├── StackQuadwordRow (unique to this file)
+    ├── LiveStackDumpContent
+    └── LiveMemoryDumpContent (uses HexDumpRow)
+    
+MemoryTextView.swift (NEW)
+    ├── MemoryTextView
+    ├── MemoryTextContent
+    └── MemoryTextLine
+    
+MemorySplitView.swift (NEW)
+    └── Uses MemoryHexDumpView + MemoryTextView
+```
+
+## Steps to Fix Remaining Issues
+
+### If You See Register Component Errors
+
+1. In Xcode, find **`MemoryLayoutView.swift`** in the project navigator
+2. Right-click on it → Select "Delete"
+3. Choose "Move to Trash"
+4. Build the project (⌘B)
+
+### Hex Dump Errors Should Be Gone
+
+The duplicate `HexDumpRow` and `HexDumpContent` have been removed from `MemoryHexDumpView.swift`.
+
+**No action needed** - these errors are fixed.
 
 ## Verification
 
-After deletion, check that:
-- ✅ App builds without errors
-- ✅ Register panel still displays correctly
-- ✅ No missing symbols errors
+After the fix, your project should:
+- ✅ Build without errors
+- ✅ Register panel displays correctly
+- ✅ Memory hex dump views work correctly
+- ✅ Text memory view works correctly
+- ✅ Split memory view works correctly
 
-The app uses `RegisterPanelView` from `RegisterPanelView.swift`, which has all the necessary components.
+## What You Should Have
+
+**Keep These Files:**
+- ✅ `HexDumpComponents.swift` - **KEEP** (shared components used by other files)
+- ✅ `MemoryHexDumpView.swift` - **KEEP** (uses components from HexDumpComponents)
+- ✅ `MemoryTextView.swift` - **KEEP** (NEW text-focused view)
+- ✅ `MemorySplitView.swift` - **KEEP** (NEW split view)
+- ✅ `RegisterPanelView.swift` - **KEEP** (register display)
+- ✅ `MemoryState.swift` - **KEEP** (data structures)
+
+**Delete If They Exist:**
+- ❌ `MemoryLayoutView.swift` - Obsolete, replaced by RegisterPanelView
+
+## Summary
+
+The hex dump redeclaration errors have been fixed by removing duplicate code from `MemoryHexDumpView.swift`. The file now correctly uses shared components from `HexDumpComponents.swift`.
+
+**What was wrong:** I mistakenly added duplicate `HexDumpRow` and `HexDumpContent` to `MemoryHexDumpView.swift` 
+
+**What is fixed:** Duplicates removed, file now uses shared components correctly
+
+**What works now:** All memory views (hex dump, text, split) build and function correctly

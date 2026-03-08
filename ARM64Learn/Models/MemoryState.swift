@@ -127,7 +127,7 @@ struct Register: Identifiable {
     var category: Category
     var isChanged: Bool = false
 
-    var hexValue: String { String(format: "0x%016X", value) }
+    var hexValue: String { String(format: "0x%016llX", value) }
     var decValue: String { "\(value)" }
 
     var displayName: String {
@@ -175,8 +175,8 @@ struct Register: Identifiable {
         // Special registers
         regs.append(Register(name: "x29", alias: "fp", value: 0, description: "Frame pointer — base of current stack frame", category: .special))
         regs.append(Register(name: "x30", alias: "lr", value: 0, description: "Link register — return address set by BL/BLR", category: .special))
-        regs.append(Register(name: "sp", value: 0x7FFFFFE000, description: "Stack pointer — must be 16-byte aligned at calls", category: .special))
-        regs.append(Register(name: "pc", value: 0x100000000, description: "Program counter — address of current instruction", category: .special))
+        regs.append(Register(name: "sp", value: 0, description: "Stack pointer — must be 16-byte aligned at calls", category: .special))
+        regs.append(Register(name: "pc", value: 0, description: "Program counter — address of current instruction", category: .special))
         regs.append(Register(name: "xzr", alias: "wzr", value: 0, description: "Zero register — always reads 0, writes discarded", category: .special))
 
         // Flags

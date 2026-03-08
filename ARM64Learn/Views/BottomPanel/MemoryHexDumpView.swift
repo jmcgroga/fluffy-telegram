@@ -5,9 +5,6 @@ import SwiftUI
 struct MemoryHexDumpView: View {
     let segmentName: String
     @EnvironmentObject private var appState: AppState
-    @State private var startAddress: UInt64 = 0
-    @State private var bytesPerRow: Int = 16
-    @State private var rowCount: Int = 32
     
     var segment: MemorySegment? {
         appState.memoryState.segments.first { $0.name == segmentName }
@@ -18,8 +15,7 @@ struct MemoryHexDumpView: View {
             // Header with controls
             MemoryHexDumpHeader(
                 segment: segment,
-                segmentName: segmentName,
-                startAddress: $startAddress
+                segmentName: segmentName
             )
             
             Divider()
@@ -28,13 +24,10 @@ struct MemoryHexDumpView: View {
             ScrollView {
                 if segmentName == "STACK", !appState.liveStackEntries.isEmpty {
                     LiveStackDumpContent(entries: appState.liveStackEntries)
-                } else if let seg = segment {
-                    HexDumpContent(
-                        segment: seg,
-                        startAddress: startAddress == 0 ? seg.startAddress : startAddress,
-                        bytesPerRow: bytesPerRow,
-                        rowCount: rowCount
-                    )
+                } else if segmentName == "__DATA", !appState.liveDataEntries.isEmpty {
+                    LiveStackDumpContent(entries: appState.liveDataEntries)
+                } else if segment != nil {
+                    HexDumpContent()
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")
@@ -58,7 +51,6 @@ struct MemoryHexDumpView: View {
 struct MemoryHexDumpHeader: View {
     let segment: MemorySegment?
     let segmentName: String
-    @Binding var startAddress: UInt64
     
     var body: some View {
         HStack(spacing: 12) {
@@ -76,29 +68,6 @@ struct MemoryHexDumpHeader: View {
             }
             
             Spacer()
-            
-            // Address input
-            HStack(spacing: 6) {
-                Text("Address:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                
-                TextField("0x", value: $startAddress, format: .number.notation(.scientific))
-                    .font(.system(size: 11, design: .monospaced))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 140)
-                
-                Button {
-                    if let seg = segment {
-                        startAddress = seg.startAddress
-                    }
-                } label: {
-                    Text("Reset")
-                        .font(.caption)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -121,25 +90,26 @@ extension MemorySegment {
 
 // MARK: - Live Stack Dump (from LLDB memory read)
 
-/// Displays live stack contents read from LLDB (`memory read $sp --count 16 --size 8`).
-/// Each entry is an 8-byte quadword; we expand into bytes for the standard hex dump rows.
+/// Displays live memory contents read from LLDB (`memory read`).
+/// Shows each 8-byte quadword as a complete 64-bit value.
 struct LiveStackDumpContent: View {
     let entries: [(address: UInt64, value: UInt64)]
-
-    /// Convert each 8-byte quadword into a `HexDumpRow`-compatible byte array (little-endian).
-    private func bytes(for value: UInt64) -> [UInt8] {
-        (0..<8).map { i in UInt8((value >> (i * 8)) & 0xFF) }
+    
+    private var segmentName: String {
+        // Determine segment name based on address range
+        guard let firstAddress = entries.first?.address else { return "memory" }
+        if firstAddress >= 0x1_0000_0000 && firstAddress < 0x2_0000_0000 {
+            return "data section"
+        } else {
+            return "stack"
+        }
     }
 
     var body: some View {
         LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
             Section {
                 ForEach(Array(entries.enumerated()), id: \.offset) { idx, entry in
-                    HexDumpRow(
-                        address: entry.address,
-                        data: bytes(for: entry.value),
-                        bytesPerRow: 8
-                    )
+                    StackQuadwordRow(address: entry.address, value: entry.value)
                     if idx < entries.count - 1 {
                         Divider().padding(.leading, 130)
                     }
@@ -150,19 +120,63 @@ struct LiveStackDumpContent: View {
                         Image(systemName: "livephoto")
                             .font(.caption2)
                             .foregroundStyle(.green)
-                        Text("Live stack — \(entries.count) quadwords from $sp")
+                        Text("Live \(segmentName) — \(entries.count) quadwords")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.06))
-                    HexDumpHeader(bytesPerRow: 8)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(.regularMaterial)
+                    Divider()
                 }
             }
         }
-        .padding(12)
+        .padding(.top, 1)
+    }
+}
+
+// MARK: - Stack Quadword Row
+
+struct StackQuadwordRow: View {
+    let address: UInt64
+    let value: UInt64
+    
+    // Convert 64-bit value to little-endian bytes
+    private var bytes: [UInt8] {
+        (0..<8).map { i in UInt8((value >> (i * 8)) & 0xFF) }
+    }
+    
+    // ASCII representation (printable chars only)
+    private var asciiString: String {
+        bytes.map { byte in
+            (32...126).contains(byte) ? String(UnicodeScalar(byte)) : "."
+        }.joined()
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Address
+            Text(String(format: "0x%011X:", address))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 100, alignment: .leading)
+            
+            // Hex bytes (8 bytes, little-endian)
+            Text(bytes.map { String(format: "%02x", $0) }.joined(separator: " "))
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(.primary)
+                .frame(width: 180, alignment: .leading)
+            
+            // ASCII representation
+            Text(asciiString)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 }
 
@@ -171,13 +185,30 @@ struct LiveStackDumpContent: View {
     
     MemoryHexDumpView(segmentName: "STACK")
         .environmentObject(previewAppState)
+        .onAppear {
+            // Add sample stack data for preview
+            previewAppState.liveStackEntries = [
+                (address: 0x16fdff000, value: 0x0000000016fdff010),  // Saved FP
+                (address: 0x16fdff008, value: 0x0000000100003f80),  // Saved LR
+                (address: 0x16fdff010, value: 0x0000000000000042),  // Local var
+                (address: 0x16fdff018, value: 0x0000000000000001),  // Local var
+            ]
+        }
         .frame(width: 1000, height: 400)
 }
 
-#Preview("Memory Hex Dump - Text Segment") {
+#Preview("Memory Hex Dump - Data Segment") {
     @Previewable @StateObject var previewAppState = AppState()
     
-    MemoryHexDumpView(segmentName: "__TEXT")
+    MemoryHexDumpView(segmentName: "__DATA")
         .environmentObject(previewAppState)
+        .onAppear {
+            // Add sample data segment for preview - "Hello, ARM64 World!" string
+            previewAppState.liveDataEntries = [
+                (address: 0x100008000, value: 0x41202c6f6c6c6548),  // "Hello, A"
+                (address: 0x100008008, value: 0x726f572034364d52),  // "RM64 Wor"
+                (address: 0x100008010, value: 0x0000000000216c64),  // "ld!\0\0\0\0\0"
+            ]
+        }
         .frame(width: 1000, height: 400)
 }
