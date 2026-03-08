@@ -13,7 +13,6 @@
 		0F47D5A22F548A4A009CCA90 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */; };
 		0F47D5A32F548A4A009CCA90 /* LLDBController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5922F548A4A009CCA90 /* LLDBController.swift */; };
 		0F47D5A42F548A4A009CCA90 /* Tutorial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5822F548A4A009CCA90 /* Tutorial.swift */; };
-		0F806DD02F5D1B4700E43A15 /* CLAUDE.md in Sources */ = {isa = PBXBuildFile; fileRef = 0F806DCF2F5D1B4400E43A15 /* CLAUDE.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -349,7 +348,6 @@
 				0F47D5A22F548A4A009CCA90 /* ProcessRunner.swift in Sources */,
 				0F47D5A32F548A4A009CCA90 /* LLDBController.swift in Sources */,
 				0F47D5A42F548A4A009CCA90 /* Tutorial.swift in Sources */,
-				0F806DD02F5D1B4700E43A15 /* CLAUDE.md in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
