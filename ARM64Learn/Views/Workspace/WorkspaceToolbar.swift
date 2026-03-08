@@ -5,6 +5,7 @@ import SwiftUI
 struct WorkspaceToolbar: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.sidebarToggle) private var sidebarToggle
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 12) {
@@ -54,6 +55,7 @@ struct WorkspaceToolbar: View {
 
             // Build buttons
             Button {
+                openWindow(id: "output-window")
                 Task { await appState.compileCode() }
             } label: {
                 Label("Build & Run", systemImage: "play.fill")
@@ -64,6 +66,7 @@ struct WorkspaceToolbar: View {
             .keyboardShortcut("b", modifiers: .command)
 
             Button {
+                openWindow(id: "output-window")
                 Task { await appState.compileAndDebug() }
             } label: {
                 Label("Debug", systemImage: "ant.fill")
@@ -87,6 +90,16 @@ struct WorkspaceToolbar: View {
                 .buttonStyle(.borderless)
                 .help("Toggle tutorial panel (\(appState.tutorialPanelVisible ? "Hide" : "Show"))")
                 .keyboardShortcut("1", modifiers: [.command, .option])
+
+                // Output window toggle
+                Button {
+                    openWindow(id: "output-window")
+                } label: {
+                    Image(systemName: "terminal.fill")
+                }
+                .buttonStyle(.borderless)
+                .help("Open output window")
+                .keyboardShortcut("2", modifiers: [.command, .option])
             }
 
             if appState.isCompiling {

@@ -7,7 +7,7 @@
 ├── ARM64Learn.xcodeproj/        # Xcode project — no SPM; single synchronized root group
 ├── ARM64Learn/                  # Main app target (one PBXFileSystemSynchronizedRootGroup)
 │   ├── App/
-│   │   ├── ARM64LearnApp.swift  # @main entry point; menu commands; AppDelegate
+│   │   ├── ARM64LearnApp.swift  # @main entry point; owns AppState; main + output window scenes
 │   │   └── ContentView.swift    # AppRootView, SidebarToggle environment key
 │   ├── ViewModels/
 │   │   └── AppState.swift       # @MainActor ObservableObject; all state + actions
@@ -16,20 +16,21 @@
 │   │   └── MemoryState.swift    # MemoryState, MemorySegment, Register, StackFrame
 │   ├── Views/
 │   │   ├── Workspace/
-│   │   │   ├── MainWorkspaceView.swift    # Nested split layout: Tutorial | (Editor+Segments / Console) / MemoryStrip
-│   │   │   ├── WorkspaceView.swift        # Same nested split layout as MainWorkspaceView
-│   │   │   ├── WorkspaceToolbar.swift     # Toolbar: language picker, build buttons, tutorial toggle
+│   │   │   ├── MainWorkspaceView.swift    # Split layout: Tutorial | Editor | SegmentPanel / MemoryStrip
+│   │   │   ├── WorkspaceView.swift        # Same split layout as MainWorkspaceView
+│   │   │   ├── WorkspaceToolbar.swift     # Toolbar: language picker, build buttons, tutorial toggle, output window
 │   │   │   ├── SidebarView.swift          # Tutorial list / NavigationSplitView sidebar
 │   │   │   ├── TutorialContentView.swift  # Markdown rendered via AttributedString
-│   │   │   └── CodeEditorView.swift       # NSViewRepresentable wrapping LineNumberTextView
+│   │   │   └── CodeEditorView.swift       # NSViewRepresentable wrapping LineNumberTextView; header includes DebuggerControlBar
 │   │   ├── Registers/
 │   │   │   └── RegisterPanelView.swift    # RegisterListView, RegisterRowView, FlagBitsView, FPSRFlagsView
 │   │   └── BottomPanel/
 │   │       ├── BottomPanelView.swift      # Tabbed console (Build/Terminal/LLDB) + tab bar
+│   │       ├── OutputWindowView.swift     # Wrapper for BottomPanelView in output window
 │   │       ├── SegmentPanelView.swift     # VSplitView: __DATA (top) + __TEXT (bottom)
 │   │       ├── MemoryStripView.swift      # HSplitView: Registers + Stack + Heap (all visible)
 │   │       ├── BuildOutputView.swift      # Scrollable build/run output
-│   │       ├── LLDBDebuggerView.swift     # DebuggerControlBar, console, command input
+│   │       ├── LLDBDebuggerView.swift     # LLDB console + command input
 │   │       ├── ConsoleOutputView.swift    # Shared scrollable monospaced text view
 │   │       ├── TerminalPanelView.swift    # Terminal session output + input
 │   │       ├── MemoryHexDumpView.swift    # MemoryHexDumpHeader, LiveStackDumpContent
@@ -54,7 +55,7 @@ The Xcode project uses a single `PBXFileSystemSynchronizedRootGroup` for `ARM64L
 
 ## AppState (`ARM64Learn/ViewModels/AppState.swift`)
 
-`AppState` is the single `@MainActor` `ObservableObject`. All views receive it via `@EnvironmentObject`.
+`AppState` is the single `@MainActor` `ObservableObject`. It is created as a `@StateObject` in `ARM64LearnApp` and injected via `.environmentObject()` into both the main `WindowGroup` and the output `Window` scene for cross-window state sharing. All views receive it via `@EnvironmentObject`.
 
 ### Key published properties
 
@@ -162,6 +163,8 @@ Static enum with regex-based parsers:
 ## CodeEditorView (`Views/Workspace/CodeEditorView.swift`)
 
 `SyntaxTextEditor` is an `NSViewRepresentable` wrapping `LineNumberTextView` inside an `NSScrollView`.
+
+The view's header bar contains the language label (`.s` / `.c`), `DebuggerControlBar` (Run/Pause/Stop/Step buttons inline), and quick action buttons (Build & Run, Debug). The debugger controls are separated from the language label by a `Divider`.
 
 ### `SyntaxHighlightingStorage`
 `NSTextStorage` subclass. Holds a backing `NSMutableAttributedString` and applies syntax highlighting in `processEditing()` after every edit. Maintains `executionLine: Int?`; calls `applyExecutionLineBackground()` after each highlight pass so the green execution-line highlight is never overwritten.

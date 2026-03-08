@@ -7,11 +7,6 @@ struct LLDBDebuggerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Stepping toolbar — always visible in the LLDB tab
-            DebuggerControlBar()
-
-            Divider()
-
             // Raw LLDB output
             ConsoleOutputView(text: appState.lldbOutput)
 
@@ -113,12 +108,7 @@ struct DebuggerControlBar: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Capsule().fill(Color.secondary.opacity(0.1)))
             }
-
-            Spacer()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(.regularMaterial)
     }
 
     private var stateColor: Color {

@@ -14,33 +14,22 @@ struct WorkspaceView: View {
 
             // Main content: top/bottom split
             VSplitView {
-                // TOP HALF: Tutorial | (Editor + Segments + Console)
+                // TOP: Tutorial | Code Editor | __DATA/__TEXT
                 HSplitView {
                     if appState.tutorialPanelVisible {
                         TutorialContentView()
                             .frame(minWidth: 280)
                     }
 
-                    // Right side: editor+segments on top, console below
-                    VSplitView {
-                        // Editor and segment panels side by side
-                        HSplitView {
-                            CodeEditorView()
-                                .frame(minWidth: 300)
+                    CodeEditorView()
+                        .frame(minWidth: 300)
 
-                            SegmentPanelView()
-                                .frame(minWidth: 250)
-                        }
-                        .frame(minHeight: 150)
-
-                        // Tabbed console spanning editor + segment panel
-                        BottomPanelView()
-                            .frame(minHeight: 100)
-                    }
+                    SegmentPanelView()
+                        .frame(minWidth: 250)
                 }
-                .frame(minHeight: 300)
+                .frame(minHeight: 200)
 
-                // BOTTOM HALF: Registers + Stack + Heap (full width)
+                // BOTTOM: Registers + Stack + Heap (full width)
                 MemoryStripView()
                     .frame(minHeight: 120)
             }

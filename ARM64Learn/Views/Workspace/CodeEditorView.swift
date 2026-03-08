@@ -8,7 +8,7 @@ struct CodeEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header with language indicator and actions
+            // Header with language indicator, debugger controls, and actions
             HStack(spacing: 8) {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .foregroundStyle(.orange)
@@ -23,7 +23,14 @@ struct CodeEditorView: View {
                 Text(appState.codeLanguage.rawValue)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Divider().frame(height: 22)
+
+                // Debugger controls inline
+                DebuggerControlBar()
+
                 Spacer()
+
                 // Quick actions
                 Button {
                     appState.currentCode = appState.codeLanguage == .arm64
@@ -44,7 +51,7 @@ struct CodeEditorView: View {
                 .help("Copy code")
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.vertical, 5)
             .background(.regularMaterial)
 
             Divider()

@@ -2,26 +2,24 @@
 
 ## Overview
 
-ARM64Learn is a single-window macOS application built with SwiftUI. The window contains a multi-panel workspace that lets a user read a tutorial, write and compile code, step through it in a debugger, and inspect registers and memory — without switching applications.
+ARM64Learn is a multi-window macOS application built with SwiftUI. The main window contains a multi-panel workspace for reading tutorials, writing code, and inspecting registers and memory. A separate output window displays build output, terminal, and LLDB console. The debugger control bar is integrated into the code editor header.
 
 ## Layout
 
-The window is a `NavigationSplitView` wrapping a `MainWorkspaceView`. The main content area uses nested `VSplitView` and `HSplitView` containers. The tutorial content panel can be toggled via toolbar.
+### Main Window
+
+The main window is a `NavigationSplitView` wrapping a `MainWorkspaceView`. The content area uses `VSplitView` and `HSplitView` containers. The tutorial content panel can be toggled via toolbar.
 
 ```
 ┌─ Toolbar ─────────────────────────────────────────────────────────────────┐
 ├───────────────────────────────────────────────────────────────────────────┤
 │ TOP HALF (outer VSplitView)                                               │
-│ ┌──────────────┬────────────────────────────────────────────┐             │
-│ │              │  ┌───────────────┬────────────────────────┐│             │
-│ │  Tutorial    │  │               │  __DATA / __TEXT        ││             │
-│ │  Content     │  │  Code Editor  │  (SegmentPanel)         ││             │
-│ │              │  │               │                         ││             │
-│ │              │  ├───────────────┴────────────────────────┤│             │
-│ │              │  │ Tabbed Console (Build / Term / LLDB)    ││             │
-│ │              │  │ [spans editor + segment panel]          ││             │
-│ │              │  └────────────────────────────────────────┘│             │
-│ └──────────────┴────────────────────────────────────────────┘             │
+│ ┌──────────────┬───────────────────────┬──────────────────────┐           │
+│ │              │                       │  __DATA / __TEXT      │           │
+│ │  Tutorial    │  Code Editor          │  (SegmentPanel)       │           │
+│ │  Content     │  [header has debugger │                       │           │
+│ │              │   control buttons]    │                       │           │
+│ └──────────────┴───────────────────────┴──────────────────────┘           │
 ├ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ (draggable divider) ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┤
 │ BOTTOM HALF                                                               │
 │ ┌───────────────────────────────────────────────────────────┐             │
@@ -30,6 +28,22 @@ The window is a `NavigationSplitView` wrapping a `MainWorkspaceView`. The main c
 │ └───────────────────────────────────────────────────────────┘             │
 └───────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Output Window (separate)
+
+```
+┌─ Output ──────────────────────────────────────────┐
+│ ┌──────────────────────────────────────────────┐  │
+│ │ [Build Output] [Terminal] [LLDB]  ← tab bar  │  │
+│ ├──────────────────────────────────────────────┤  │
+│ │                                              │  │
+│ │  Console content for selected tab            │  │
+│ │                                              │  │
+│ └──────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────┘
+```
+
+The output window opens automatically on build or debug. It can also be opened manually via the toolbar button (`⌘⌥2`).
 
 The tutorial list (sidebar) is controlled by a `NavigationSplitView` toggle. The tutorial content panel can be shown/hidden via a toolbar button or keyboard shortcut (`⌘⌥1`).
 
@@ -41,24 +55,24 @@ Displays the 10 tutorials grouped into `TutorialCategory` sections. Selecting a 
 ### Tutorial Content Panel (Top-Left)
 Renders the selected tutorial's Markdown file. Read-only. Togglable via toolbar.
 
-### Code Editor (Top, Center-Left)
-`NSTextView`-based editor with a custom line-number gutter drawn by `LineNumberTextView`. Supports ARM64 assembly (`.s`) and C (`.c`) modes. The gutter displays:
+### Code Editor (Top, Center)
+`NSTextView`-based editor with a custom line-number gutter drawn by `LineNumberTextView`. Supports ARM64 assembly (`.s`) and C (`.c`) modes. The header bar contains the language label, debugger control buttons (Run/Pause/Stop/Step), and quick action buttons. The gutter displays:
 - Line numbers
 - A green `▶` execution arrow on the current LLDB stop line
 - A red `●` breakpoint dot for lines in `activeBreakpoints`; clicking a gutter line toggles a breakpoint
 
-### Segment Panel (Top, Center-Right)
+### Segment Panel (Top, Right)
 A `VSplitView` containing two `MemoryHexDumpView` instances stacked vertically:
 - **Top**: `__DATA` hex dump — live data segment contents from LLDB
 - **Bottom**: `__TEXT` hex dump — live text (code) segment contents from LLDB
 
-### Tabbed Console (Below Editor + Segment Panel)
-Spans the full width of the editor and segment panel area. A tab bar with three tabs:
+### Output Window (Separate Window)
+A separate macOS window (`Window` scene with id `"output-window"`) displaying the tabbed console. Opens automatically on build or debug actions. Contains a tab bar with three tabs:
 
 | Tab | Content |
 |-----|---------|
 | Build Output | Compiler stdout/stderr and program output |
-| LLDB | Debugger control bar, raw LLDB console, command/stdin input |
+| LLDB | Raw LLDB console with command/stdin input |
 | Terminal | Embedded login-shell terminal |
 
 ### Memory Strip (Bottom, Full Width)
@@ -69,7 +83,7 @@ An `HSplitView` spanning the full window width, displaying three views simultane
 
 ## State Ownership
 
-`AppState` is the single `@MainActor ObservableObject` source of truth. It is injected at the root via `.environmentObject` and read by all views via `@EnvironmentObject`. It owns:
+`AppState` is the single `@MainActor ObservableObject` source of truth. It is created as a `@StateObject` in `ARM64LearnApp` (the `App` struct) and injected via `.environmentObject()` into both the main `WindowGroup` and the output `Window` scene, enabling shared state across windows. All views read it via `@EnvironmentObject`. It owns:
 
 - Tutorial selection and categories
 - Current code string and language

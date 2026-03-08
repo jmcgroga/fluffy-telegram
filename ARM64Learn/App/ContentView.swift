@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: - App Root View
 
 struct AppRootView: View {
-    @StateObject private var appState = AppState()
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.openWindow) private var openWindow
     @State private var showSidebar = false
 
     var body: some View {
@@ -35,9 +36,11 @@ struct AppRootView: View {
         .environmentObject(appState)
         .environment(\.sidebarToggle, SidebarToggle(isShowing: $showSidebar))
         .onReceive(NotificationCenter.default.publisher(for: .compileCode)) { _ in
+            openWindow(id: "output-window")
             Task { await appState.compileCode() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .compileAndDebug)) { _ in
+            openWindow(id: "output-window")
             Task { await appState.compileAndDebug() }
         }
     }

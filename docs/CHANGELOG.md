@@ -4,6 +4,26 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-08 — Move debugger controls to editor header and console output to separate window
+
+### Changed
+- **Debugger control bar** — Moved `DebuggerControlBar` (Run/Pause/Stop/Step buttons) from the LLDB tab into the code editor's header bar, inline next to the language label and quick action buttons. Removed the bar's own background and padding so it integrates with the existing header.
+- **Console output window** — The tabbed console (Build Output, Terminal, LLDB) is now displayed in a separate macOS window instead of being embedded in the workspace. The output window opens automatically when building or debugging.
+- **Workspace layout simplified** — The main workspace is now a two-level `VSplitView`: top has Tutorial | Code Editor | Segment Panel; bottom has MemoryStrip (Registers, Stack, Heap). The console is no longer part of the workspace layout.
+- **AppState ownership** — `AppState` is now owned at the `ARM64LearnApp` level (`@StateObject` in the `App` struct) and injected via `.environmentObject()` into both the main `WindowGroup` and the output `Window`. Previously owned by `AppRootView`.
+
+### Added
+- **OutputWindowView** (`Views/BottomPanel/OutputWindowView.swift`) — Wrapper view for `BottomPanelView` displayed in the output window.
+- **Output window scene** — `Window("Output", id: "output-window")` added to `ARM64LearnApp` with default size 800×400.
+- **Output window toolbar button** — Terminal icon button (`⌘⌥2`) in the toolbar opens the output window.
+- **Auto-open on build/debug** — Build & Run, Debug buttons, and keyboard shortcut handlers call `openWindow(id: "output-window")` automatically.
+
+### Removed
+- `DebuggerControlBar` from `LLDBDebuggerView` body — now lives in `CodeEditorView` header.
+- Console panel from workspace split views — moved to separate window.
+
+---
+
 ## 2026-03-08 — Restructure workspace layout into nested split with always-visible memory panels
 
 ### Changed
