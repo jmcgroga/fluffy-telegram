@@ -4,6 +4,74 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-08 — Optimize TEXT and DATA section parsing to skip empty container space
+
+### Changed
+- **TEXT section memory reading** — Now finds and combines only the actual subsections (`__text`, `__stubs`, `__const`, `__cstring`, etc.) instead of reading the entire container. This avoids displaying large regions of zeros that pad the container but aren't used.
+- **DATA section memory reading** — Similarly optimized to combine only actual subsections (`__data`, `__bss`, `__common`) instead of the full container.
+- `LLDBOutputParser.parseTextSection()` — Uses regex to find all TEXT subsections, calculates the range from the first subsection start to the last subsection end, combining only the used portions.
+- `LLDBOutputParser.parseDataSection()` — Uses regex to find all DATA subsections and combines their ranges.
+- Regex pattern matches section types: `code`, `data`, `zero_fill`, `common`, `compact_unwind`, `literal_pointers`, `cstring_literals`, `symbols`, `unwind_info`.
+
+### Result
+For example, if the TEXT container is `0x0000000100000000-0x0000000100004000` (16 KB) but only `__text` (`0x100000458-0x100000478`) and `__stubs` (`0x100000478-0x100000484`) are present, the view now shows only `0x100000458-0x100000484` (44 bytes) instead of 16 KB of mostly zeros.
+
+---
+
+## 2026-03-08 — Fix TEXT and DATA section parsing to capture full containers
+
+### Fixed
+- **Incomplete TEXT section display** — Changed `parseTextSection()` to match the `__TEXT` container instead of just `__TEXT.__text`, ensuring all subsections (`.text`, `.stubs`, `.const`, `.cstring`, etc.) are included in the memory view.
+- **Incomplete DATA section display** — Changed `parseDataSection()` to match the `__DATA` container instead of just `__DATA.__data`, capturing all subsections (`.data`, `.bss`, `.common`, etc.).
+- Regex pattern updated from matching `code` type to matching `container` type.
+- Pattern now matches lines ending with `.__TEXT\s*$` and `.__DATA\s*$` to avoid matching subsections.
+
+### Changed
+- `LLDBOutputParser.parseTextSection()` — Now parses the entire `__TEXT` container (e.g., `0x0000000100000000-0x0000000100004000`) instead of just the `__text` code subsection.
+- `LLDBOutputParser.parseDataSection()` — Now parses the entire `__DATA` container instead of just the `__data` subsection.
+
+---
+
+## 2026-03-08 — Fix address formatting in memory views
+
+### Fixed
+- **Address display truncation** — Changed format specifier from `%011X` to `%016llX` to display all 16 hex digits of 64-bit addresses. Previously, addresses like `0x0000000100008000` were incorrectly displayed as `0x00000008000`.
+- `StackQuadwordRow` in `MemoryHexDumpView.swift` — Address format updated and width increased from 100pt to 140pt.
+- `MemorySegment.formattedStart` and `formattedEnd` in `MemoryState.swift` — Fixed to show full 64-bit addresses.
+
+### Changed
+- **Address prefix removed** — Memory view addresses no longer show the `0x` prefix (now displays `0000000100008000:` instead of `0x0000000100008000:`). The header still uses the format returned by `formattedStart`/`formattedEnd`.
+
+---
+
+## 2026-03-08 — Remove line wrapping from console views
+
+### Changed
+- **ConsoleOutputView** — Set `widthTracksTextView = false` on the text container to disable line wrapping and enable horizontal scrolling in all console output views (Build Output, LLDB, Terminal).
+- `NSTextContainer` now uses `CGFloat.greatestFiniteMagnitude` for width, allowing text to extend horizontally without wrapping.
+- Horizontal scrollbar is now visible and auto-hides when not needed.
+
+### Added
+- **ConsoleOutputView.swift** — New shared `NSViewRepresentable` component for displaying scrollable monospaced console text with horizontal scrolling support.
+- **BuildOutputView.swift** — Wraps `ConsoleOutputView` with `appState.buildOutput`.
+- **TerminalPanelView.swift** — Terminal output view with input row, using `ConsoleOutputView`.
+
+---
+
+## 2026-03-08 — Live text section memory view
+
+### Added
+- **Live text section memory tab** — `LLDBController.refreshState()` now reads the __TEXT.__text section after every step using `image dump sections` to find the section dynamically, then reads its contents with `memory read`. Parsed quadword entries are stored in `AppState.liveTextEntries`.
+- **Text section parser** — `LLDBOutputParser.parseTextSection()` parses `image dump sections` output to locate the __TEXT.__text section address and size.
+- **Text section callback** — `LLDBController.onTextMemoryUpdated` callback added and wired to `AppState` in `compileAndDebug()`.
+- **Text tab display** — The Text tab in `MemoryHexDumpView` now shows `LiveStackDumpContent` (green-bannered live view) when `liveTextEntries` are present, displaying machine code bytes in the same hex/ASCII format as Stack and Data tabs.
+- Text section preview added to `MemoryHexDumpView` showing sample ARM64 machine code.
+
+### Changed
+- `LiveStackDumpContent.segmentName` computation updated to detect text section addresses (0x100000000 range) and display "text section" in the header.
+
+---
+
 ## 2026-03-08 — Repository restructure to standard Xcode project layout
 
 ### Changed

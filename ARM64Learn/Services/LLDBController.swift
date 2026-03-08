@@ -66,6 +66,7 @@ final class LLDBController: ObservableObject {
     var onProcessTerminated: ((Int32) -> Void)?
     var onStackMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
     var onDataMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
+    var onTextMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
     /// Raw output forwarded to the console display (unchanged).
     var forwardToDisplay: ((String) -> Void)?
 
@@ -101,6 +102,17 @@ final class LLDBController: ObservableObject {
         
         let output = await sendAndAwait("image dump sections \(executableName)")
         return LLDBOutputParser.parseDataSection(from: output)
+    }
+    
+    /// Find the .text section dynamically using image dump sections
+    private func findTextSection() async -> (address: UInt64, size: UInt64)? {
+        guard let executablePath = session?.binaryPath else { return nil }
+        
+        // Extract just the filename from the full path
+        let executableName = (executablePath as NSString).lastPathComponent
+        
+        let output = await sendAndAwait("image dump sections \(executableName)")
+        return LLDBOutputParser.parseTextSection(from: output)
     }
 
     // MARK: - Launch & Break at _main
@@ -349,6 +361,20 @@ final class LLDBController: ObservableObject {
                 }
             }
         }
+        
+        // 6. Text section contents (find dynamically and read)
+        if let textSection = await findTextSection(), textSection.size > 0 {
+            // Calculate number of 8-byte chunks needed
+            let count = (textSection.size + 7) / 8  // Round up to nearest 8-byte boundary
+            let textMemOut = await sendAndAwait("memory read --format uint8_t[] --size 8 --count \(count) 0x\(String(textSection.address, radix: 16))")
+            let textEntries = LLDBOutputParser.parseMemoryRead(from: textMemOut)
+            
+            if !textEntries.isEmpty {
+                await MainActor.run {
+                    self.onTextMemoryUpdated?(textEntries)
+                }
+            }
+        }
     }
 
     // MARK: - Tier-1 sendAndAwait (5 s timeout)
@@ -558,32 +584,89 @@ enum LLDBOutputParser {
     
     // MARK: data section
     
-    /// Parse "image dump sections" output to find __DATA.__data section
-    /// Example line: "0x00000004 data                   [0x0000000100008000-0x0000000100008014)  rw-  0x00008000 0x00000014 0x00000000 output_debug.__DATA.__data"
+    /// Parse "image dump sections" output to find all subsections within __DATA container
+    /// Example lines:
+    ///   "0x00000004 data                   [0x0000000100008000-0x0000000100008014)  rw-  ... output_debug.__DATA.__data"
+    ///   "0x00000005 zero_fill              [0x0000000100008014-0x0000000100008020)  rw-  ... output_debug.__DATA.__bss"
+    /// Returns the combined range from the first subsection to the end of the last subsection
     static func parseDataSection(from output: String) -> (address: UInt64, size: UInt64)? {
-        // Pattern to match data section with address range
-        // The format: SectID type [start-end) perm ... section_name
-        // We're looking for lines ending with .__DATA.__data
+        // Pattern to match any subsection within __DATA (not the container itself)
+        // Match lines like: .__DATA.__data, .__DATA.__bss, .__DATA.__common, etc.
         guard let regex = try? NSRegularExpression(
-            pattern: #"0x[0-9a-fA-F]+\s+data\s+\[(0x[0-9a-fA-F]+)-(0x[0-9a-fA-F]+)\).*\.__DATA\.__data"#,
+            pattern: #"0x[0-9a-fA-F]+\s+(?:data|zero_fill|common)\s+\[(0x[0-9a-fA-F]+)-(0x[0-9a-fA-F]+)\).*\.__DATA\.\w+"#,
             options: .anchorsMatchLines
         ) else { return nil }
         
         let ns = output as NSString
-        guard let match = regex.firstMatch(
-            in: output,
-            range: NSRange(location: 0, length: ns.length)
-        ), match.numberOfRanges == 3 else { return nil }
+        let matches = regex.matches(in: output, range: NSRange(location: 0, length: ns.length))
         
-        let startStr = ns.substring(with: match.range(at: 1))
-        let endStr = ns.substring(with: match.range(at: 2))
+        guard !matches.isEmpty else { return nil }
         
-        guard let startAddr = UInt64(startStr.dropFirst(2), radix: 16),
-              let endAddr = UInt64(endStr.dropFirst(2), radix: 16) else {
-            return nil
+        var minStart: UInt64 = .max
+        var maxEnd: UInt64 = 0
+        
+        // Find the overall range by combining all subsections
+        for match in matches {
+            guard match.numberOfRanges == 3 else { continue }
+            let startStr = ns.substring(with: match.range(at: 1))
+            let endStr = ns.substring(with: match.range(at: 2))
+            
+            guard let startAddr = UInt64(startStr.dropFirst(2), radix: 16),
+                  let endAddr = UInt64(endStr.dropFirst(2), radix: 16) else {
+                continue
+            }
+            
+            minStart = min(minStart, startAddr)
+            maxEnd = max(maxEnd, endAddr)
         }
         
-        let size = endAddr - startAddr
-        return (startAddr, size)
+        guard minStart != .max && maxEnd > minStart else { return nil }
+        
+        let size = maxEnd - minStart
+        return (minStart, size)
+    }
+    
+    // MARK: text section
+    
+    /// Parse "image dump sections" output to find all subsections within __TEXT container
+    /// Example lines:
+    ///   "0x00000001 code                   [0x0000000100000458-0x0000000100000478)  r-x  ... output_debug.__TEXT.__text"
+    ///   "0x00000002 code                   [0x0000000100000478-0x0000000100000484)  r-x  ... output_debug.__TEXT.__stubs"
+    /// Returns the combined range from the first subsection to the end of the last subsection
+    static func parseTextSection(from output: String) -> (address: UInt64, size: UInt64)? {
+        // Pattern to match any subsection within __TEXT (not the container itself)
+        // Match lines like: .__TEXT.__text, .__TEXT.__stubs, .__TEXT.__const, etc.
+        guard let regex = try? NSRegularExpression(
+            pattern: #"0x[0-9a-fA-F]+\s+(?:code|data|compact_unwind|literal_pointers?|cstring_literals?|symbols?|unwind_info)\s+\[(0x[0-9a-fA-F]+)-(0x[0-9a-fA-F]+)\).*\.__TEXT\.\w+"#,
+            options: .anchorsMatchLines
+        ) else { return nil }
+        
+        let ns = output as NSString
+        let matches = regex.matches(in: output, range: NSRange(location: 0, length: ns.length))
+        
+        guard !matches.isEmpty else { return nil }
+        
+        var minStart: UInt64 = .max
+        var maxEnd: UInt64 = 0
+        
+        // Find the overall range by combining all subsections
+        for match in matches {
+            guard match.numberOfRanges == 3 else { continue }
+            let startStr = ns.substring(with: match.range(at: 1))
+            let endStr = ns.substring(with: match.range(at: 2))
+            
+            guard let startAddr = UInt64(startStr.dropFirst(2), radix: 16),
+                  let endAddr = UInt64(endStr.dropFirst(2), radix: 16) else {
+                continue
+            }
+            
+            minStart = min(minStart, startAddr)
+            maxEnd = max(maxEnd, endAddr)
+        }
+        
+        guard minStart != .max && maxEnd > minStart else { return nil }
+        
+        let size = maxEnd - minStart
+        return (minStart, size)
     }
 }

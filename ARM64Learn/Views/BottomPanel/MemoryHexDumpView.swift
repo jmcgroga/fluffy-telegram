@@ -26,6 +26,8 @@ struct MemoryHexDumpView: View {
                     LiveStackDumpContent(entries: appState.liveStackEntries)
                 } else if segmentName == "__DATA", !appState.liveDataEntries.isEmpty {
                     LiveStackDumpContent(entries: appState.liveDataEntries)
+                } else if segmentName == "__TEXT", !appState.liveTextEntries.isEmpty {
+                    LiveStackDumpContent(entries: appState.liveTextEntries)
                 } else if segment != nil {
                     HexDumpContent()
                 } else {
@@ -98,7 +100,10 @@ struct LiveStackDumpContent: View {
     private var segmentName: String {
         // Determine segment name based on address range
         guard let firstAddress = entries.first?.address else { return "memory" }
-        if firstAddress >= 0x1_0000_0000 && firstAddress < 0x2_0000_0000 {
+        // Text section is typically in the lower address range (around 0x100000000 on macOS)
+        if firstAddress >= 0x100000000 && firstAddress < 0x100010000 {
+            return "text section"
+        } else if firstAddress >= 0x1_0000_0000 && firstAddress < 0x2_0000_0000 {
             return "data section"
         } else {
             return "stack"
@@ -156,11 +161,11 @@ struct StackQuadwordRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Address
-            Text(String(format: "0x%011X:", address))
+            // Address (16 hex digits, no 0x prefix)
+            Text(String(format: "%016llX:", address))
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(.secondary)
-                .frame(width: 100, alignment: .leading)
+                .frame(width: 140, alignment: .leading)
             
             // Hex bytes (8 bytes, little-endian)
             Text(bytes.map { String(format: "%02x", $0) }.joined(separator: " "))
@@ -212,3 +217,23 @@ struct StackQuadwordRow: View {
         }
         .frame(width: 1000, height: 400)
 }
+#Preview("Memory Hex Dump - Text Segment") {
+    @Previewable @StateObject var previewAppState = AppState()
+    
+    MemoryHexDumpView(segmentName: "__TEXT")
+        .environmentObject(previewAppState)
+        .onAppear {
+            // Add sample text segment for preview - ARM64 machine code
+            // These are actual ARM64 instructions
+            previewAppState.liveTextEntries = [
+                (address: 0x100003f5c, value: 0xa9bf7bfd_d10043ff),  // stp x29,x30,[sp,#-16]!; sub sp,sp,#16
+                (address: 0x100003f64, value: 0x910003fd_90000000),  // mov x29,sp; adrp x0,...
+                (address: 0x100003f6c, value: 0x91000000_94000000),  // add x0,x0,...; bl ...
+                (address: 0x100003f74, value: 0xd2800000_a8c17bfd),  // mov x0,#0; ldp x29,x30,[sp],#16
+                (address: 0x100003f7c, value: 0xd65f03c0_00000000),  // ret
+            ]
+        }
+        .frame(width: 1000, height: 400)
+}
+
+

@@ -33,8 +33,8 @@ struct MemorySegment: Identifiable {
 
     var endAddress: UInt64 { startAddress &+ size }
 
-    var formattedStart: String { String(format: "0x%011X", startAddress) }
-    var formattedEnd: String { String(format: "0x%011X", endAddress) }
+    var formattedStart: String { String(format: "%016llX", startAddress) }
+    var formattedEnd: String { String(format: "%016llX", endAddress) }
     var formattedSize: String {
         if size >= 1024 * 1024 {
             return String(format: "%.1f MB", Double(size) / (1024 * 1024))

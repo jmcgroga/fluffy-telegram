@@ -19,6 +19,36 @@ Select the **ARM64Learn** scheme, choose **My Mac** as the destination, and pres
 
 There is no Swift Package Manager; this is a pure Xcode project.
 
+## File Organization
+
+**All source files live in subdirectories under `ARM64Learn/`** (relative to the project root where `ARM64Learn.xcodeproj` is located). When creating new Swift files, they must be placed in the appropriate subdirectory following the project structure documented in `docs/IMPLEMENTATION.md`.
+
+The Xcode project uses `PBXFileSystemSynchronizedRootGroup`, which means files are auto-discovered in the directory tree. **New files must be created in their proper location** — do not create files at the project root.
+
+### Source File Locations
+
+From the project root (where `ARM64Learn.xcodeproj` lives):
+
+- **App entry point**: `ARM64Learn/App/`
+- **View models**: `ARM64Learn/ViewModels/`
+- **Data models**: `ARM64Learn/Models/`
+- **Views**: `ARM64Learn/Views/` (with subdirectories: `Workspace/`, `Registers/`, `BottomPanel/`)
+- **Services**: `ARM64Learn/Services/`
+- **Resources**: `ARM64Learn/Resources/`
+
+### Important: AI File Path Limitations
+
+**Critical limitation**: The AI assistant accesses files using simplified paths (e.g., `/repo/ConsoleOutputView.swift`) but **cannot see or specify the actual directory structure** (`ARM64Learn/Views/BottomPanel/ConsoleOutputView.swift`).
+
+This means:
+- When the AI modifies `/repo/ConsoleOutputView.swift`, it's actually modifying `ARM64Learn/Views/BottomPanel/ConsoleOutputView.swift`
+- The AI cannot create new files in specific subdirectories — it can only create files at `/repo/` root with mangled names
+- The AI cannot reliably tell you where a file is actually located in your project structure
+
+**For file location questions**: Always refer to `docs/IMPLEMENTATION.md` for the authoritative directory structure. The AI's path references are unreliable for determining actual file locations.
+
+**When the AI creates new files**: They will likely be created at the project root with incorrect names. You must manually move them to the correct location as documented in `docs/IMPLEMENTATION.md`.
+
 ## Documentation Rules
 
 All documentation lives in one of the following places. Follow these rules exactly — do not create other documentation files and do not put content in the wrong file.

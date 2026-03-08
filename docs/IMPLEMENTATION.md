@@ -70,6 +70,8 @@ The Xcode project uses a single `PBXFileSystemSynchronizedRootGroup` for `ARM64L
 | `lastChangedRegisters` | `Set<String>` | Register names that changed on last step |
 | `lastRegisterChangeSummary` | `String` | Human-readable chip text, e.g. `"x0: 0x2A  ·  sp: 0x16F…"` |
 | `liveStackEntries` | `[(address: UInt64, value: UInt64)]` | 16 quadwords from `memory read $sp` |
+| `liveDataEntries` | `[(address: UInt64, value: UInt64)]` | Data section contents from `memory read` |
+| `liveTextEntries` | `[(address: UInt64, value: UInt64)]` | Text section contents from `memory read` |
 | `activeBreakpoints` | `Set<Int>` | 1-based line numbers with active breakpoints |
 
 ### `applyRegisterUpdate(_ values: [String: UInt64])`
@@ -126,10 +128,21 @@ Tier-1 send: sets state to `.waitingResponse`, sends the command, races `awaitPr
 ### `awaitPrompt() async -> String`
 No-timeout await for the next `(lldb) ` prompt. Used for `run` and `process continue` where execution time is unbounded.
 
-### `refreshState()` — three phases after every stop
+### `refreshState()` — six phases after every stop
 1. `register read` → `LLDBOutputParser.parseRegisters` → `onRegistersUpdated`
-2. `bt 1` → `LLDBOutputParser.parseBacktrace` → `onFrameUpdated`
-3. `memory read $sp --count 16 --size 8` → `LLDBOutputParser.parseMemoryRead` → `onMemoryUpdated`
+2. `register read fpsr` → parse FPSR register explicitly
+3. `bt 1` → `LLDBOutputParser.parseBacktrace` → `onFrameUpdated`
+4. `memory read $sp --count 16 --size 8` → `LLDBOutputParser.parseMemoryRead` → `onStackMemoryUpdated`
+5. `image dump sections` → `LLDBOutputParser.parseDataSection` → `memory read` (combined range of all `__DATA` subsections) → `onDataMemoryUpdated`
+6. `image dump sections` → `LLDBOutputParser.parseTextSection` → `memory read` (combined range of all `__TEXT` subsections) → `onTextMemoryUpdated`
+
+**Note**: Both `parseDataSection()` and `parseTextSection()` find all subsections within the segment and calculate the combined range from the first subsection to the last. This avoids reading large unused regions in the container that are filled with zeros.
+
+**TEXT subsections matched**: `code` (e.g., `__text`, `__stubs`), `compact_unwind`, `literal_pointers`, `cstring_literals`, `symbols`, `unwind_info`
+
+**DATA subsections matched**: `data` (e.g., `__data`), `zero_fill` (e.g., `__bss`), `common` (e.g., `__common`)
+
+**Example**: If TEXT container is `0x100000000-0x100004000` but only `__text` at `0x100000458-0x100000478` and `__stubs` at `0x100000478-0x100000484` exist, the parser returns `0x100000458-0x100000484` (44 bytes) instead of the full 16 KB container.
 
 ### `LLDBOutputParser`
 Static enum with regex-based parsers:
@@ -141,6 +154,8 @@ Static enum with regex-based parsers:
 | `parseStopReason(from:)` | stop block | `String?` |
 | `parseMemoryRead(from:)` | `memory read` output | `[(address: UInt64, value: UInt64)]` |
 | `detectProcessExit(in:)` | buffered output | `Int32?` exit code |
+| `parseDataSection(from:)` | `image dump sections` output | `(address: UInt64, size: UInt64)?` |
+| `parseTextSection(from:)` | `image dump sections` output | `(address: UInt64, size: UInt64)?` |
 
 ## CodeEditorView (`Views/Workspace/CodeEditorView.swift`)
 
@@ -182,15 +197,35 @@ Decodes PSTATE NZCV bits from a `UInt64`:
 
 Renders each as a small badge: filled with accent color when set, dimmed when clear. Animated via `.animation(.easeOut(duration: 0.3), value: set)`.
 
+## ConsoleOutputView (`Views/BottomPanel/ConsoleOutputView.swift`)
+
+Shared `NSViewRepresentable` component for displaying scrollable, monospaced console output with horizontal scrolling.
+
+- **No line wrapping**: `textContainer.widthTracksTextView = false` allows text to extend horizontally
+- **Text container size**: `CGFloat.greatestFiniteMagnitude` for both width and height
+- **Scrolling**: Both horizontal and vertical scrollbars enabled, auto-hiding
+- **Auto-scroll**: Automatically scrolls to bottom on new content if already at bottom
+- **Styling**: 11pt monospaced system font, 12pt horizontal / 8pt vertical inset
+
+Used by `BuildOutputView`, `LLDBDebuggerView`, and `TerminalPanelView`.
+
 ## MemoryHexDumpView (`Views/BottomPanel/MemoryHexDumpView.swift`)
 
-Shows an xxd-style hex dump. When `segmentName == "STACK"` and `appState.liveStackEntries` is non-empty, renders `LiveStackDumpContent` instead of `HexDumpContent`.
+Shows an xxd-style hex dump. When `segmentName` matches `"STACK"`, `"__DATA"`, or `"__TEXT"` and the corresponding `liveStackEntries`, `liveDataEntries`, or `liveTextEntries` is non-empty, renders `LiveStackDumpContent` instead of `HexDumpContent`.
 
 ### `LiveStackDumpContent`
-Converts each `(address: UInt64, value: UInt64)` entry to 8 bytes (little-endian) and passes them to standard `HexDumpRow` components. Shows a green "Live stack — N quadwords from $sp" banner as the sticky section header.
+Converts each `(address: UInt64, value: UInt64)` entry to 8 bytes (little-endian) and passes them to `StackQuadwordRow` components. Shows a green "Live [segment] — N quadwords" banner as the sticky section header. The segment name is determined by address range:
+- Text section: addresses in range `0x100000000...0x100010000`
+- Data section: addresses in range `0x1_0000_0000...0x2_0000_0000`
+- Stack: all other addresses
+
+Each row displays:
+- **Address**: 16 hex digits without `0x` prefix (e.g., `0000000100008000:`), format `%016llX`
+- **Hex bytes**: 8 bytes in little-endian order, space-separated
+- **ASCII**: printable characters or `.` for non-printable bytes
 
 ### `HexDumpContent`
-Renders simulated data via `generateSampleData()` for non-live tabs (Heap, \_\_DATA, \_\_TEXT) and as the fallback for Stack when no debug session is active.
+Renders simulated data via `generateSampleData()` for non-live tabs (Heap) and as the fallback for Stack, Data, and Text when no debug session is active.
 
 ## TutorialLoader (`Services/TutorialLoader.swift`)
 

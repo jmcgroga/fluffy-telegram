@@ -27,6 +27,8 @@
 		0F47D54B2F54897B009CCA90 /* ARM64Learn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARM64Learn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0F47D5582F54897D009CCA90 /* ARM64LearnTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ARM64LearnTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0F47D5622F54897D009CCA90 /* ARM64LearnUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ARM64LearnUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0F5FA1192F5DB59000E90A44 /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
+		0F5FA11F2F5DB59000E90A44 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -43,6 +45,11 @@
 		0F47D5652F54897D009CCA90 /* ARM64LearnUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ARM64LearnUITests;
+			sourceTree = "<group>";
+		};
+		0F5FA11E2F5DB59000E90A44 /* docs */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = docs;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +82,9 @@
 		0F47D5422F54897B009CCA90 = {
 			isa = PBXGroup;
 			children = (
+				0F5FA11F2F5DB59000E90A44 /* README.md */,
+				0F5FA1192F5DB59000E90A44 /* CLAUDE.md */,
+				0F5FA11E2F5DB59000E90A44 /* docs */,
 				0F47D54D2F54897B009CCA90 /* ARM64Learn */,
 				0F47D55B2F54897D009CCA90 /* ARM64LearnTests */,
 				0F47D5652F54897D009CCA90 /* ARM64LearnUITests */,

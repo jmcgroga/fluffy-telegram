@@ -241,6 +241,9 @@ class AppState: ObservableObject {
             controller.onDataMemoryUpdated = { [weak self] entries in
                 self?.liveDataEntries = entries
             }
+            controller.onTextMemoryUpdated = { [weak self] entries in
+                self?.liveTextEntries = entries
+            }
 
             controller.attach(to: session)
             await session.start()
