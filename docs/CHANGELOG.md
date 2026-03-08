@@ -4,6 +4,27 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-08 — Repository restructure to standard Xcode project layout
+
+### Changed
+- **`ARM64Learn.xcodeproj/`** moved to the repository root (was `ARM64Learn/ARM64Learn.xcodeproj/`). Open with `open ARM64Learn.xcodeproj`.
+- **`ARM64Learn/`** is now the sole source directory at the root. Subdirectories reorganised:
+  - `App/` — `ARM64LearnApp.swift`, `ContentView.swift` (app entry point and root view)
+  - `ViewModels/` — `AppState.swift` (was `ARM64Learn/ARM64Learn/AppState.swift`)
+  - `Models/`, `Views/`, `Services/` — same contents, now inside `ARM64Learn/`
+  - `Resources/` — `Assets.xcassets` moved here from `ARM64Learn/ARM64Learn/`; `Tutorials/` unchanged
+- **`ARM64LearnTests/`** and **`ARM64LearnUITests/`** moved to the repository root (were inside `ARM64Learn/`).
+- **`project.pbxproj`** simplified: removed all explicit `PBXFileReference`, `PBXBuildFile`, and `PBXGroup` entries for source files. A single `PBXFileSystemSynchronizedRootGroup` for `ARM64Learn/` now auto-discovers all app sources, resources, and assets.
+- **`ARM64Learn/docs/`** deleted (18 stale fix-note files).
+- **`ARM64Learn/CLAUDE.md`** deleted (root `CLAUDE.md` is the authoritative instructions file).
+
+### Added
+- **`.github/`** — CI/CD workflows (`ci.yml`, `release.yml`, `pr-lint.yml`), issue templates (bug report, feature request, config), `PULL_REQUEST_TEMPLATE.md`, `CODEOWNERS`, `dependabot.yml`.
+- **`.gitignore`** — Xcode + macOS standard ignores, ARM64Learn temp directory.
+- **`.editorconfig`** — Swift 4-space indentation, LF line endings, UTF-8.
+
+---
+
 ## 2026-03-08 — LLDB enhancements: live stack, register diff chip, NZCV badges, breakpoint UI
 
 **Commits:** `d74b372`

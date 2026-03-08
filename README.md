@@ -81,7 +81,7 @@ Each panel can be toggled independently from the toolbar.
 ```bash
 git clone https://github.com/jmcgroga/arm64-tutorial-ide.git
 cd arm64-tutorial-ide
-open ARM64Learn/ARM64Learn.xcodeproj
+open ARM64Learn.xcodeproj
 ```
 
 Select the **ARM64Learn** scheme, set the destination to **My Mac**, and press **⌘R**.

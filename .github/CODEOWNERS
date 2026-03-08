@@ -1,0 +1,9 @@
+# Default owner for everything
+* @jmcgroga
+
+# Xcode project file — require explicit review when it changes
+ARM64Learn.xcodeproj/project.pbxproj @jmcgroga
+
+# Documentation
+docs/ @jmcgroga
+README.md @jmcgroga

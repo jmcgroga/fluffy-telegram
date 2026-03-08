@@ -107,7 +107,32 @@ Handles both Build & Run and Build & Debug. Locates `clang` via `xcrun`, writes 
 `LLDBSession` owns the LLDB subprocess and its stdin/stdout pipes. `LLDBController` is a prompt-delimited command/response correlator sitting on top of `LLDBSession`. After each step it automatically refreshes registers, the current frame, and stack memory.
 
 ### Tutorial Loading (`TutorialLoader`)
-Reads Markdown files from the app bundle at `Resources/Tutorials/` and parses them into `TutorialCategory` / `Tutorial` model objects.
+Reads Markdown files from the app bundle at `ARM64Learn/Resources/Tutorials/` and parses them into `TutorialCategory` / `Tutorial` model objects.
 
 ### Syntax Highlighting (`SyntaxHighlighter`)
 `SyntaxHighlightingStorage` is an `NSTextStorage` subclass that re-highlights on every edit. Supports ARM64 assembly and C keywords. Also maintains the execution-line background highlight so it survives re-highlighting passes.
+
+## Repository Layout
+
+```
+(repo root)/
+├── ARM64Learn.xcodeproj/    # Xcode project at root; single sync group covers ARM64Learn/
+├── ARM64Learn/              # Main app target (one PBXFileSystemSynchronizedRootGroup)
+│   ├── App/                 # @main entry point and root view
+│   ├── ViewModels/          # AppState (ObservableObject, @MainActor)
+│   ├── Models/              # Data models (Tutorial, MemoryState, Register)
+│   ├── Views/               # SwiftUI views, grouped by area
+│   │   ├── Workspace/
+│   │   ├── Registers/
+│   │   └── BottomPanel/
+│   ├── Services/            # Compilation, LLDB, terminal, syntax highlighting
+│   └── Resources/           # Assets.xcassets + Tutorials/
+├── ARM64LearnTests/
+├── ARM64LearnUITests/
+├── .github/                 # CI workflows, issue/PR templates, CODEOWNERS
+├── docs/                    # DESIGN, IMPLEMENTATION, REFERENCE, CHANGELOG
+├── .gitignore
+├── .editorconfig
+├── CLAUDE.md
+└── README.md
+```

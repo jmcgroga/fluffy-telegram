@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Build
+        run: |
+          xcodebuild build \
+            -project ARM64Learn.xcodeproj \
+            -scheme ARM64Learn \
+            -destination "platform=macOS" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project ARM64Learn.xcodeproj \
+            -scheme ARM64Learn \
+            -destination "platform=macOS" \
+            CODE_SIGNING_ALLOWED=NO

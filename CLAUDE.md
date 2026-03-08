@@ -7,7 +7,7 @@
 ## Build & Run
 
 ```bash
-open ARM64Learn/ARM64Learn.xcodeproj
+open ARM64Learn.xcodeproj
 ```
 
 Select the **ARM64Learn** scheme, choose **My Mac** as the destination, and press **⌘R**.

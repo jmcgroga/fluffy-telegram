@@ -3,43 +3,54 @@
 ## Project Structure
 
 ```
-ARM64Learn/
-├── ARM64Learn.xcodeproj/        # Xcode project — no SPM
-├── ARM64Learn/                  # Main app target
-│   ├── ARM64LearnApp.swift      # @main entry point; injects AppState environmentObject
-│   ├── AppState.swift           # @MainActor ObservableObject; all state + actions
-│   └── ContentView.swift        # Root NavigationSplitView
-├── Models/
-│   ├── Tutorial.swift           # Tutorial, TutorialCategory, Difficulty
-│   └── MemoryState.swift        # MemoryState, MemorySegment, Register, StackFrame
-├── Views/
-│   ├── Workspace/
-│   │   ├── MainWorkspaceView.swift    # HSplitView layout + BottomPanelView
-│   │   ├── WorkspaceToolbar.swift     # Toolbar: language picker, build buttons, panel toggles
-│   │   ├── SidebarView.swift          # Tutorial list / NavigationSplitView sidebar
-│   │   ├── TutorialContentView.swift  # Markdown rendered via AttributedString
-│   │   ├── CodeEditorView.swift       # NSViewRepresentable wrapping LineNumberTextView
-│   │   └── WorkspaceView.swift        # ContentView workspace wrapper
-│   ├── Registers/
-│   │   └── RegisterPanelView.swift    # RegisterListView, RegisterRowView, FlagBitsView
-│   └── BottomPanel/
-│       ├── BottomPanelView.swift      # Tab bar + tab content switcher
-│       ├── BuildOutputView.swift      # Scrollable build/run output
-│       ├── LLDBDebuggerView.swift     # DebuggerControlBar, register-change chip, console
-│       ├── ConsoleOutputView.swift    # Shared scrollable monospaced text view
-│       ├── TerminalPanelView.swift    # Terminal session output + input
-│       ├── MemoryHexDumpView.swift    # MemoryHexDumpHeader, LiveStackDumpContent
-│       └── HexDumpComponents.swift    # HexDumpContent, HexDumpHeader, HexDumpRow
-├── Services/
-│   ├── ProcessRunner.swift      # Compiler invocation, binary execution, LLDBSession, TerminalSession
-│   ├── LLDBController.swift     # Prompt correlator, step commands, auto-refresh, LLDBOutputParser
-│   ├── TutorialLoader.swift     # Bundle Markdown parsing → TutorialCategory/Tutorial
-│   └── SyntaxHighlighter.swift  # SyntaxHighlightingStorage (NSTextStorage subclass)
-└── Resources/
-    └── Tutorials/               # 01_intro.md … 10_c_interop.md
+(repo root)/
+├── ARM64Learn.xcodeproj/        # Xcode project — no SPM; single synchronized root group
+├── ARM64Learn/                  # Main app target (one PBXFileSystemSynchronizedRootGroup)
+│   ├── App/
+│   │   ├── ARM64LearnApp.swift  # @main entry point; menu commands; AppDelegate
+│   │   └── ContentView.swift    # AppRootView, SidebarToggle environment key
+│   ├── ViewModels/
+│   │   └── AppState.swift       # @MainActor ObservableObject; all state + actions
+│   ├── Models/
+│   │   ├── Tutorial.swift       # Tutorial, TutorialCategory, Difficulty
+│   │   └── MemoryState.swift    # MemoryState, MemorySegment, Register, StackFrame
+│   ├── Views/
+│   │   ├── Workspace/
+│   │   │   ├── MainWorkspaceView.swift    # HSplitView layout + BottomPanelView
+│   │   │   ├── WorkspaceToolbar.swift     # Toolbar: language picker, build buttons, panel toggles
+│   │   │   ├── SidebarView.swift          # Tutorial list / NavigationSplitView sidebar
+│   │   │   ├── TutorialContentView.swift  # Markdown rendered via AttributedString
+│   │   │   ├── CodeEditorView.swift       # NSViewRepresentable wrapping LineNumberTextView
+│   │   │   └── WorkspaceView.swift        # ContentView workspace wrapper
+│   │   ├── Registers/
+│   │   │   └── RegisterPanelView.swift    # RegisterListView, RegisterRowView, FlagBitsView, FPSRFlagsView
+│   │   └── BottomPanel/
+│   │       ├── BottomPanelView.swift      # Tab bar + tab content switcher
+│   │       ├── BuildOutputView.swift      # Scrollable build/run output
+│   │       ├── LLDBDebuggerView.swift     # DebuggerControlBar, register-change chip, console
+│   │       ├── ConsoleOutputView.swift    # Shared scrollable monospaced text view
+│   │       ├── TerminalPanelView.swift    # Terminal session output + input
+│   │       ├── MemoryHexDumpView.swift    # MemoryHexDumpHeader, LiveStackDumpContent
+│   │       └── HexDumpComponents.swift    # HexDumpContent, HexDumpHeader, HexDumpRow
+│   ├── Services/
+│   │   ├── ProcessRunner.swift      # Compiler invocation, binary execution, LLDBSession, TerminalSession
+│   │   ├── LLDBController.swift     # Prompt correlator, step commands, auto-refresh, LLDBOutputParser
+│   │   ├── TutorialLoader.swift     # Bundle Markdown parsing → TutorialCategory/Tutorial
+│   │   └── SyntaxHighlighter.swift  # SyntaxHighlightingStorage (NSTextStorage subclass)
+│   └── Resources/
+│       ├── Assets.xcassets/         # App icon, accent color
+│       └── Tutorials/               # 01_intro.md … 10_c_interop.md
+├── ARM64LearnTests/             # Unit tests
+├── ARM64LearnUITests/           # UI / integration tests
+├── .github/                     # GitHub Actions workflows, PR/issue templates
+├── docs/                        # DESIGN.md, IMPLEMENTATION.md, REFERENCE.md, CHANGELOG.md
+├── CLAUDE.md                    # AI assistant instructions and documentation rules
+└── README.md                    # User guide
 ```
 
-## AppState (`ARM64Learn/AppState.swift`)
+The Xcode project uses a single `PBXFileSystemSynchronizedRootGroup` for `ARM64Learn/` — Xcode auto-discovers all Swift files and resources in the directory tree. No manual `PBXFileReference` or `PBXBuildFile` entries are needed for source files.
+
+## AppState (`ARM64Learn/ViewModels/AppState.swift`)
 
 `AppState` is the single `@MainActor` `ObservableObject`. All views receive it via `@EnvironmentObject`.
 
@@ -70,7 +81,7 @@ Sets `currentExecutionLine` and `currentExecutionFile` from the parsed backtrace
 ### `toggleBreakpoint(line:)`
 Adds/removes from `activeBreakpoints` and issues `breakpoint set --line N --file F` or `breakpoint clear --line N --file F` to `LLDBController.sendRawCommand`.
 
-## ProcessRunner (`Services/ProcessRunner.swift`)
+## ProcessRunner (`ARM64Learn/Services/ProcessRunner.swift`)
 
 Manages compilation and execution via `Process`.
 
@@ -84,7 +95,7 @@ Manages compilation and execution via `Process`.
 - `compile()` returns a formatted string with build result + program output
 - `compileWithDebugSymbols()` returns `(success, binaryPath?, outputString)`
 
-## LLDBSession (`Services/ProcessRunner.swift`)
+## LLDBSession (`ARM64Learn/Services/ProcessRunner.swift`)
 
 Owns the `lldb <binaryPath>` subprocess. Two output handlers:
 - `outputHandler` — forwarded to `AppState.lldbOutput` on the main queue (display)
@@ -92,7 +103,7 @@ Owns the `lldb <binaryPath>` subprocess. Two output handlers:
 
 `send(_ text: String)` writes to the subprocess stdin pipe.
 
-## LLDBController (`Services/LLDBController.swift`)
+## LLDBController (`ARM64Learn/Services/LLDBController.swift`)
 
 Prompt-delimited command/response correlator sitting on top of `LLDBSession`.
 

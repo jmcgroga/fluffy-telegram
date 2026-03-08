@@ -6,15 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		0F39B9622F5677D6005B84BA /* TutorialLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F39B95D2F5677D6005B84BA /* TutorialLoader.swift */; };
-		0F47D59B2F548A4A009CCA90 /* MemoryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5812F548A4A009CCA90 /* MemoryState.swift */; };
-		0F47D59D2F548A4A009CCA90 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */; };
-		0F47D5A22F548A4A009CCA90 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */; };
-		0F47D5A32F548A4A009CCA90 /* LLDBController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5922F548A4A009CCA90 /* LLDBController.swift */; };
-		0F47D5A42F548A4A009CCA90 /* Tutorial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F47D5822F548A4A009CCA90 /* Tutorial.swift */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXContainerItemProxy section */
 		0F47D5592F54897D009CCA90 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -33,60 +24,12 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0F39B95D2F5677D6005B84BA /* TutorialLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialLoader.swift; sourceTree = "<group>"; };
 		0F47D54B2F54897B009CCA90 /* ARM64Learn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ARM64Learn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0F47D5582F54897D009CCA90 /* ARM64LearnTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ARM64LearnTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0F47D5622F54897D009CCA90 /* ARM64LearnUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ARM64LearnUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		0F47D5812F548A4A009CCA90 /* MemoryState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryState.swift; sourceTree = "<group>"; };
-		0F47D5822F548A4A009CCA90 /* Tutorial.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tutorial.swift; sourceTree = "<group>"; };
-		0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
-		0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
-		0F47D5922F548A4A009CCA90 /* LLDBController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLDBController.swift; sourceTree = "<group>"; };
-		0F806DCF2F5D1B4400E43A15 /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLAUDE.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		0F39B97F2F567FC5005B84BA /* Exceptions for "docs" folder in "ARM64Learn" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				FIX_REDECLARATION_ERRORS.md,
-				FIXING_CATALOG_NOT_FOUND.md,
-				REFACTORING_SUMMARY.md,
-				TUTORIAL_MIGRATION_SUMMARY.md,
-			);
-			target = 0F47D54A2F54897B009CCA90 /* ARM64Learn */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		0F0D4CBA2F5668A70086CE5E /* BottomPanel */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = BottomPanel;
-			sourceTree = "<group>";
-		};
-		0F0D4CBC2F5668F70086CE5E /* Workspace */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Workspace;
-			sourceTree = "<group>";
-		};
-		0F0D4CBD2F5669370086CE5E /* Registers */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Registers;
-			sourceTree = "<group>";
-		};
-		0F0D4CF42F5673970086CE5E /* docs */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				0F39B97F2F567FC5005B84BA /* Exceptions for "docs" folder in "ARM64Learn" target */,
-			);
-			path = docs;
-			sourceTree = "<group>";
-		};
-		0F39B9E22F568246005B84BA /* Tutorials */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Tutorials;
-			sourceTree = "<group>";
-		};
 		0F47D54D2F54897B009CCA90 /* ARM64Learn */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ARM64Learn;
@@ -132,12 +75,6 @@
 		0F47D5422F54897B009CCA90 = {
 			isa = PBXGroup;
 			children = (
-				0F806DCF2F5D1B4400E43A15 /* CLAUDE.md */,
-				0F0D4CF42F5673970086CE5E /* docs */,
-				0F47D5832F548A4A009CCA90 /* Models */,
-				0F47D58F2F548A4A009CCA90 /* Resources */,
-				0F47D5932F548A4A009CCA90 /* Services */,
-				0F47D59A2F548A4A009CCA90 /* Views */,
 				0F47D54D2F54897B009CCA90 /* ARM64Learn */,
 				0F47D55B2F54897D009CCA90 /* ARM64LearnTests */,
 				0F47D5652F54897D009CCA90 /* ARM64LearnUITests */,
@@ -153,44 +90,6 @@
 				0F47D5622F54897D009CCA90 /* ARM64LearnUITests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		0F47D5832F548A4A009CCA90 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				0F47D5812F548A4A009CCA90 /* MemoryState.swift */,
-				0F47D5822F548A4A009CCA90 /* Tutorial.swift */,
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
-		0F47D58F2F548A4A009CCA90 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				0F39B9E22F568246005B84BA /* Tutorials */,
-			);
-			path = Resources;
-			sourceTree = "<group>";
-		};
-		0F47D5932F548A4A009CCA90 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				0F47D5922F548A4A009CCA90 /* LLDBController.swift */,
-				0F47D5902F548A4A009CCA90 /* ProcessRunner.swift */,
-				0F47D5912F548A4A009CCA90 /* SyntaxHighlighter.swift */,
-				0F39B95D2F5677D6005B84BA /* TutorialLoader.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		0F47D59A2F548A4A009CCA90 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				0F0D4CBA2F5668A70086CE5E /* BottomPanel */,
-				0F0D4CBC2F5668F70086CE5E /* Workspace */,
-				0F0D4CBD2F5669370086CE5E /* Registers */,
-			);
-			path = Views;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -209,11 +108,6 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				0F0D4CBA2F5668A70086CE5E /* BottomPanel */,
-				0F0D4CBC2F5668F70086CE5E /* Workspace */,
-				0F0D4CBD2F5669370086CE5E /* Registers */,
-				0F0D4CF42F5673970086CE5E /* docs */,
-				0F39B9E22F568246005B84BA /* Tutorials */,
 				0F47D54D2F54897B009CCA90 /* ARM64Learn */,
 			);
 			name = ARM64Learn;
@@ -342,12 +236,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0F47D59B2F548A4A009CCA90 /* MemoryState.swift in Sources */,
-				0F47D59D2F548A4A009CCA90 /* SyntaxHighlighter.swift in Sources */,
-				0F39B9622F5677D6005B84BA /* TutorialLoader.swift in Sources */,
-				0F47D5A22F548A4A009CCA90 /* ProcessRunner.swift in Sources */,
-				0F47D5A32F548A4A009CCA90 /* LLDBController.swift in Sources */,
-				0F47D5A42F548A4A009CCA90 /* Tutorial.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
