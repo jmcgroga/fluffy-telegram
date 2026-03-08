@@ -6,53 +6,66 @@ ARM64Learn is a single-window macOS application built with SwiftUI. The window c
 
 ## Layout
 
-The window is a `NavigationSplitView` wrapping a `MainWorkspaceView`. All three of the following panels are independently togglable:
+The window is a `NavigationSplitView` wrapping a `MainWorkspaceView`. The main content area uses nested `VSplitView` and `HSplitView` containers. The tutorial content panel can be toggled via toolbar.
 
 ```
-┌─ Tutorial list (sidebar) ─────────────────────────────────────────────────┐
-│                                                                            │
-│  ┌─ Tutorial content ──┐  ┌─ Code editor ──────┐  ┌─ Register panel ──┐  │
-│  │                     │  │  gutter + editor   │  │  General          │  │
-│  │  Markdown lesson    │  │                    │  │  Special          │  │
-│  │                     │  │                    │  │  Flags / NZCV     │  │
-│  └─────────────────────┘  └────────────────────┘  └───────────────────┘  │
-│                            ┌─ Bottom panel ────────────────────────────┐  │
-│                            │  Output │ LLDB │ Terminal │ Stack │ …    │  │
-│                            └───────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────────┘
+┌─ Toolbar ─────────────────────────────────────────────────────────────────┐
+├───────────────────────────────────────────────────────────────────────────┤
+│ TOP HALF (outer VSplitView)                                               │
+│ ┌──────────────┬────────────────────────────────────────────┐             │
+│ │              │  ┌───────────────┬────────────────────────┐│             │
+│ │  Tutorial    │  │               │  __DATA / __TEXT        ││             │
+│ │  Content     │  │  Code Editor  │  (SegmentPanel)         ││             │
+│ │              │  │               │                         ││             │
+│ │              │  ├───────────────┴────────────────────────┤│             │
+│ │              │  │ Tabbed Console (Build / Term / LLDB)    ││             │
+│ │              │  │ [spans editor + segment panel]          ││             │
+│ │              │  └────────────────────────────────────────┘│             │
+│ └──────────────┴────────────────────────────────────────────┘             │
+├ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ (draggable divider) ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┤
+│ BOTTOM HALF                                                               │
+│ ┌───────────────────────────────────────────────────────────┐             │
+│ │  Registers  │  Stack  │  Heap                              │             │
+│ │  (MemoryStrip — full width)                                │             │
+│ └───────────────────────────────────────────────────────────┘             │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
-The tutorial list (sidebar) is controlled by a `NavigationSplitView` toggle. The tutorial content, register, and bottom panels each have individual visibility flags in `AppState` and can be shown/hidden via toolbar buttons or keyboard shortcuts.
+The tutorial list (sidebar) is controlled by a `NavigationSplitView` toggle. The tutorial content panel can be shown/hidden via a toolbar button or keyboard shortcut (`⌘⌥1`).
 
 ## Panels
 
 ### Tutorial List (Sidebar)
 Displays the 10 tutorials grouped into `TutorialCategory` sections. Selecting a tutorial loads its Markdown content and sample code.
 
-### Tutorial Content Panel
-Renders the selected tutorial's Markdown file. Read-only.
+### Tutorial Content Panel (Top-Left)
+Renders the selected tutorial's Markdown file. Read-only. Togglable via toolbar.
 
-### Code Editor
+### Code Editor (Top, Center-Left)
 `NSTextView`-based editor with a custom line-number gutter drawn by `LineNumberTextView`. Supports ARM64 assembly (`.s`) and C (`.c`) modes. The gutter displays:
 - Line numbers
 - A green `▶` execution arrow on the current LLDB stop line
 - A red `●` breakpoint dot for lines in `activeBreakpoints`; clicking a gutter line toggles a breakpoint
 
-### Register Panel
-Scrollable list of ARM64 registers grouped by category (General, Special, Flags) with collapsible sections. Each register row shows the current value; rows where the value changed since the last step are highlighted yellow. The `nzcv` register renders N/Z/C/V as colored badge indicators instead of a hex value.
+### Segment Panel (Top, Center-Right)
+A `VSplitView` containing two `MemoryHexDumpView` instances stacked vertically:
+- **Top**: `__DATA` hex dump — live data segment contents from LLDB
+- **Bottom**: `__TEXT` hex dump — live text (code) segment contents from LLDB
 
-### Bottom Panel
-A tabbed panel spanning the editor and register columns. Tabs:
+### Tabbed Console (Below Editor + Segment Panel)
+Spans the full width of the editor and segment panel area. A tab bar with three tabs:
 
 | Tab | Content |
 |-----|---------|
 | Build Output | Compiler stdout/stderr and program output |
-| LLDB | Debugger control bar, register-change chip, raw LLDB console, command/stdin input |
+| LLDB | Debugger control bar, raw LLDB console, command/stdin input |
 | Terminal | Embedded login-shell terminal |
-| Stack | Live stack hex dump (LLDB `memory read $sp` during debug; simulated otherwise) |
-| Heap | Simulated heap hex dump |
-| \_\_DATA | Simulated data segment hex dump |
-| \_\_TEXT | Simulated text segment hex dump |
+
+### Memory Strip (Bottom, Full Width)
+An `HSplitView` spanning the full window width, displaying three views simultaneously side-by-side:
+- **Registers**: Scrollable list of ARM64 registers grouped by category (General, Special, Flags) with collapsible sections. The `nzcv` register renders N/Z/C/V as colored badge indicators.
+- **Stack**: Live stack hex dump (LLDB `memory read $sp` during debug)
+- **Heap**: Heap hex dump
 
 ## State Ownership
 
@@ -60,7 +73,7 @@ A tabbed panel spanning the editor and register columns. Tabs:
 
 - Tutorial selection and categories
 - Current code string and language
-- Panel visibility flags and bottom panel height/active tab
+- Tutorial panel visibility flag and active console tab
 - Build output, LLDB output, terminal output
 - Debugger execution state: current line, last changed registers, register change summary, live stack entries, active breakpoints
 - References to `LLDBSession`, `LLDBController`, and `TerminalSession`

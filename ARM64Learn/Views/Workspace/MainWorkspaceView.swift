@@ -12,37 +12,37 @@ struct MainWorkspaceView: View {
 
             Divider()
 
-            // Main content area
-            HSplitView {
-                // Panel 1: Tutorial Content (optional)
-                if appState.tutorialPanelVisible {
-                    TutorialContentView()
-                        .frame(minWidth: 320)
-                }
+            // Main content: top/bottom split
+            VSplitView {
+                // TOP HALF: Tutorial | (Editor + Segments + Console)
+                HSplitView {
+                    if appState.tutorialPanelVisible {
+                        TutorialContentView()
+                            .frame(minWidth: 280)
+                    }
 
-                // Panel 2 & 3: Editor + Memory with shared bottom panel
-                VStack(spacing: 0) {
-                    // Top: Editor and Memory side by side
-                    HSplitView {
-                        // Code Editor
-                        CodeEditorView()
-                            .frame(minWidth: 320)
+                    // Right side: editor+segments on top, console below
+                    VSplitView {
+                        // Editor and segment panels side by side
+                        HSplitView {
+                            CodeEditorView()
+                                .frame(minWidth: 300)
 
-                        // Memory Visualization (optional)
-                        if appState.registerPanelVisible {
-                            RegisterPanelView()
-                                .frame(minWidth: 280)
+                            SegmentPanelView()
+                                .frame(minWidth: 250)
                         }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(minHeight: 150)
 
-                    // Bottom panel (spans editor + memory only)
-                    if appState.bottomPanelVisible {
-                        Divider()
+                        // Tabbed console spanning editor + segment panel
                         BottomPanelView()
-                            .frame(height: appState.bottomPanelHeight)
+                            .frame(minHeight: 100)
                     }
                 }
+                .frame(minHeight: 300)
+
+                // BOTTOM HALF: Registers + Stack + Heap (full width)
+                MemoryStripView()
+                    .frame(minHeight: 120)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -56,6 +56,6 @@ struct MainWorkspaceView: View {
     MainWorkspaceView()
         .environmentObject(previewAppState)
         .environment(\.sidebarToggle, SidebarToggle(isShowing: .constant(false)))
-        .frame(width: 1200, height: 800)
+        .frame(width: 1400, height: 900)
 }
 

@@ -87,32 +87,6 @@ struct WorkspaceToolbar: View {
                 .buttonStyle(.borderless)
                 .help("Toggle tutorial panel (\(appState.tutorialPanelVisible ? "Hide" : "Show"))")
                 .keyboardShortcut("1", modifiers: [.command, .option])
-                
-                // Register panel toggle
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        appState.registerPanelVisible.toggle()
-                    }
-                } label: {
-                    Image(systemName: "cpu")
-                        .symbolVariant(appState.registerPanelVisible ? .fill : .none)
-                }
-                .buttonStyle(.borderless)
-                .help("Toggle register panel (\(appState.registerPanelVisible ? "Hide" : "Show"))")
-                .keyboardShortcut("2", modifiers: [.command, .option])
-                
-                // Bottom panel toggle
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        appState.bottomPanelVisible.toggle()
-                    }
-                } label: {
-                    Image(systemName: "rectangle.bottomthird.inset.filled")
-                        .symbolVariant(appState.bottomPanelVisible ? .fill : .none)
-                }
-                .buttonStyle(.borderless)
-                .help("Toggle bottom panel (\(appState.bottomPanelVisible ? "Hide" : "Show"))")
-                .keyboardShortcut("3", modifiers: [.command, .option])
             }
 
             if appState.isCompiling {

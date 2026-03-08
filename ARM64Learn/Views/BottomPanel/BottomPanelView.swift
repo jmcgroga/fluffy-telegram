@@ -1,33 +1,15 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Bottom Panel
+// MARK: - Bottom Panel (Tabbed Console: Build Output / Terminal / LLDB)
 
 struct BottomPanelView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var isDragging = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Drag handle + tab bar
+            // Tab bar
             HStack(spacing: 0) {
-                // Resize handle
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(height: 4)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 1)
-                            .onChanged { value in
-                                let newHeight = appState.bottomPanelHeight - value.translation.height
-                                appState.bottomPanelHeight = max(120, min(600, newHeight))
-                            }
-                    )
-                    .cursor(.resizeUpDown)
-            }
-
-            HStack(spacing: 0) {
-                // Tab bar
                 HStack(spacing: 1) {
                     ForEach(BottomPanelTab.allCases) { tab in
                         BottomTabButton(
@@ -69,27 +51,15 @@ struct BottomPanelView: View {
                         .disabled(appState.isCompiling)
                     }
 
-                    if appState.activeBottomTab == .output || appState.activeBottomTab == .lldb || appState.activeBottomTab == .terminal {
-                        Button {
-                            Task { @MainActor in
-                                clearCurrentTab()
-                            }
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Clear output")
-                    }
-
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            appState.bottomPanelVisible = false
+                        Task { @MainActor in
+                            clearCurrentTab()
                         }
                     } label: {
-                        Image(systemName: "xmark")
+                        Image(systemName: "trash")
                     }
                     .buttonStyle(.borderless)
-                    .help("Close panel")
+                    .help("Clear output")
                 }
                 .padding(.horizontal, 10)
             }
@@ -107,14 +77,6 @@ struct BottomPanelView: View {
                     TerminalPanelView()
                 case .lldb:
                     LLDBDebuggerView()
-                case .stack:
-                    MemoryHexDumpView(segmentName: "STACK")
-                case .heap:
-                    MemoryHexDumpView(segmentName: "HEAP")
-                case .data:
-                    MemoryHexDumpView(segmentName: "__DATA")
-                case .text:
-                    MemoryHexDumpView(segmentName: "__TEXT")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -124,12 +86,9 @@ struct BottomPanelView: View {
 
     private func clearCurrentTab() {
         switch appState.activeBottomTab {
-        case .output:  appState.buildOutput = ""
+        case .output:   appState.buildOutput = ""
         case .terminal: appState.terminalOutput = ""
-        case .lldb:    appState.lldbOutput = ""
-        case .stack, .heap, .data, .text:
-            // Memory tabs don't have clearable output
-            break
+        case .lldb:     appState.lldbOutput = ""
         }
     }
 }
@@ -185,7 +144,6 @@ extension View {
     BottomPanelView()
         .environmentObject(previewAppState)
         .onAppear {
-            previewAppState.bottomPanelVisible = true
             previewAppState.activeBottomTab = .output
             previewAppState.buildOutput = """
             Building...
@@ -203,7 +161,6 @@ extension View {
     BottomPanelView()
         .environmentObject(previewAppState)
         .onAppear {
-            previewAppState.bottomPanelVisible = true
             previewAppState.activeBottomTab = .lldb
             previewAppState.lldbOutput = """
             Breakpoint 1 hit at 0x100003f80
@@ -221,7 +178,6 @@ extension View {
     BottomPanelView()
         .environmentObject(previewAppState)
         .onAppear {
-            previewAppState.bottomPanelVisible = true
             previewAppState.activeBottomTab = .terminal
             previewAppState.terminalOutput = """
             $ ./a.out
@@ -232,27 +188,5 @@ extension View {
         .frame(width: 1000, height: 250)
 }
 
-#Preview("Bottom Panel - Stack Memory") {
-    @Previewable @StateObject var previewAppState = AppState()
-    
-    BottomPanelView()
-        .environmentObject(previewAppState)
-        .onAppear {
-            previewAppState.bottomPanelVisible = true
-            previewAppState.activeBottomTab = .stack
-        }
-        .frame(width: 1200, height: 350)
-}
 
-#Preview("Bottom Panel - Text Segment") {
-    @Previewable @StateObject var previewAppState = AppState()
-    
-    BottomPanelView()
-        .environmentObject(previewAppState)
-        .onAppear {
-            previewAppState.bottomPanelVisible = true
-            previewAppState.activeBottomTab = .text
-        }
-        .frame(width: 1200, height: 350)
-}
 

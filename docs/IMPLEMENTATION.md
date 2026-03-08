@@ -16,18 +16,20 @@
 │   │   └── MemoryState.swift    # MemoryState, MemorySegment, Register, StackFrame
 │   ├── Views/
 │   │   ├── Workspace/
-│   │   │   ├── MainWorkspaceView.swift    # HSplitView layout + BottomPanelView
-│   │   │   ├── WorkspaceToolbar.swift     # Toolbar: language picker, build buttons, panel toggles
+│   │   │   ├── MainWorkspaceView.swift    # Nested split layout: Tutorial | (Editor+Segments / Console) / MemoryStrip
+│   │   │   ├── WorkspaceView.swift        # Same nested split layout as MainWorkspaceView
+│   │   │   ├── WorkspaceToolbar.swift     # Toolbar: language picker, build buttons, tutorial toggle
 │   │   │   ├── SidebarView.swift          # Tutorial list / NavigationSplitView sidebar
 │   │   │   ├── TutorialContentView.swift  # Markdown rendered via AttributedString
-│   │   │   ├── CodeEditorView.swift       # NSViewRepresentable wrapping LineNumberTextView
-│   │   │   └── WorkspaceView.swift        # ContentView workspace wrapper
+│   │   │   └── CodeEditorView.swift       # NSViewRepresentable wrapping LineNumberTextView
 │   │   ├── Registers/
 │   │   │   └── RegisterPanelView.swift    # RegisterListView, RegisterRowView, FlagBitsView, FPSRFlagsView
 │   │   └── BottomPanel/
-│   │       ├── BottomPanelView.swift      # Tab bar + tab content switcher
+│   │       ├── BottomPanelView.swift      # Tabbed console (Build/Terminal/LLDB) + tab bar
+│   │       ├── SegmentPanelView.swift     # VSplitView: __DATA (top) + __TEXT (bottom)
+│   │       ├── MemoryStripView.swift      # HSplitView: Registers + Stack + Heap (all visible)
 │   │       ├── BuildOutputView.swift      # Scrollable build/run output
-│   │       ├── LLDBDebuggerView.swift     # DebuggerControlBar, register-change chip, console
+│   │       ├── LLDBDebuggerView.swift     # DebuggerControlBar, console, command input
 │   │       ├── ConsoleOutputView.swift    # Shared scrollable monospaced text view
 │   │       ├── TerminalPanelView.swift    # Terminal session output + input
 │   │       ├── MemoryHexDumpView.swift    # MemoryHexDumpHeader, LiveStackDumpContent
@@ -227,6 +229,23 @@ Each row displays:
 ### `HexDumpContent`
 Renders simulated data via `generateSampleData()` for non-live tabs (Heap) and as the fallback for Stack, Data, and Text when no debug session is active.
 
+## SegmentPanelView (`Views/BottomPanel/SegmentPanelView.swift`)
+
+A `VSplitView` containing two `MemoryHexDumpView` instances stacked vertically. Placed in the top-right area of the workspace:
+- **Top**: `MemoryHexDumpView(segmentName: "__DATA")` — live data segment hex dump
+- **Bottom**: `MemoryHexDumpView(segmentName: "__TEXT")` — live text segment hex dump
+
+Both halves have `minHeight: 80` and can be resized by dragging the split divider.
+
+## MemoryStripView (`Views/BottomPanel/MemoryStripView.swift`)
+
+An `HSplitView` displaying three views side-by-side in the bottom-right area. All three are always visible simultaneously:
+- **Left**: `RegisterPanelView()` — register list with collapsible categories
+- **Center**: `MemoryHexDumpView(segmentName: "STACK")` — live stack hex dump
+- **Right**: `MemoryHexDumpView(segmentName: "HEAP")` — heap hex dump
+
+Each column has `minWidth: 200` and can be resized by dragging the split dividers.
+
 ## TutorialLoader (`Services/TutorialLoader.swift`)
 
 Scans the app bundle for `.md` files in `Resources/Tutorials/`. Files named `NN_slug.md` are parsed for a YAML-style frontmatter block that can contain:
@@ -242,7 +261,7 @@ Tutorials are grouped into `TutorialCategory` objects based on their numeric pre
 `.arm64` (file extension `s`) and `.c` (extension `c`). Drives editor mode, compiler flags, and default sample code.
 
 ### `BottomPanelTab`
-`output`, `terminal`, `lldb`, `stack`, `heap`, `data`, `text`. Each has a `systemImage` for the tab bar icon.
+`output`, `terminal`, `lldb`. Each has a `systemImage` for the tab bar icon. The memory views (Stack, Heap, \_\_DATA, \_\_TEXT) are no longer tabs — they are always-visible panels in the new layout.
 
 ### `DebuggerSessionState`
 See [LLDBController section](#lldbcontroller-serviceslldbcontrollerswift) above.

@@ -4,6 +4,29 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-08 — Restructure workspace layout into nested split with always-visible memory panels
+
+### Changed
+- **Workspace layout** — Replaced the old HSplitView + fixed-height bottom panel with a nested split layout using `VSplitView` and `HSplitView`.
+- **Top area** — `HSplitView`: Tutorial Content (togglable) | inner `VSplitView` containing:
+  - **Upper**: `HSplitView` of Code Editor + Segment Panel (__DATA/__TEXT stacked vertically)
+  - **Lower**: Tabbed Console (Build Output, Terminal, LLDB) spanning the full width of the editor and segment panel
+- **Bottom area** — Memory Strip (Registers, Stack, Heap all visible side-by-side) at full window width.
+- **BottomPanelTab** — Reduced from 7 tabs (Build, Terminal, LLDB, Stack, Heap, Data, Text) to 3 tabs (Build, Terminal, LLDB). Memory views are no longer tabs.
+- **WorkspaceToolbar** — Removed register panel and bottom panel toggle buttons. Only the tutorial panel toggle remains.
+
+### Added
+- **SegmentPanelView** (`Views/BottomPanel/SegmentPanelView.swift`) — New `VSplitView` containing __DATA hex dump (top) and __TEXT hex dump (bottom) in the top-right area.
+- **MemoryStripView** (`Views/BottomPanel/MemoryStripView.swift`) — New `HSplitView` displaying Registers, Stack, and Heap side-by-side at the bottom. All three are always visible simultaneously.
+
+### Removed
+- `AppState.registerPanelVisible` — Registers are always visible in the Memory Strip.
+- `AppState.bottomPanelVisible` — All panels are always visible (resizable via split views).
+- `AppState.bottomPanelHeight` — No longer needed; VSplitView handles sizing.
+- `BottomPanelTab.stack`, `.heap`, `.data`, `.text` cases — These views are now always-visible panels, not tabs.
+
+---
+
 ## 2026-03-08 — Optimize TEXT and DATA section parsing to skip empty container space
 
 ### Changed

@@ -29,10 +29,6 @@ enum BottomPanelTab: String, CaseIterable, Identifiable {
     case output = "Build Output"
     case terminal = "Terminal"
     case lldb = "LLDB"
-    case stack = "Stack"
-    case heap = "Heap"
-    case data = "Data"
-    case text = "Text"
 
     var id: String { rawValue }
 
@@ -41,10 +37,6 @@ enum BottomPanelTab: String, CaseIterable, Identifiable {
         case .output: return "hammer"
         case .terminal: return "terminal"
         case .lldb: return "ant.circle"
-        case .stack: return "square.stack.3d.down.right"
-        case .heap: return "memorychip"
-        case .data: return "tablecells"
-        case .text: return "doc.text"
         }
     }
 }
@@ -115,9 +107,6 @@ class AppState: ObservableObject {
 
     // Panel visibility
     @Published var tutorialPanelVisible: Bool = true
-    @Published var registerPanelVisible: Bool = true
-    @Published var bottomPanelVisible: Bool = true
-    @Published var bottomPanelHeight: CGFloat = 300
     @Published var activeBottomTab: BottomPanelTab = .output
 
     // Build output
@@ -174,7 +163,6 @@ class AppState: ObservableObject {
 
     func compileCode() async {
         isCompiling = true
-        bottomPanelVisible = true
         activeBottomTab = .output
         buildOutput = "Building \(codeLanguage == .arm64 ? "ARM64 Assembly" : "C") code...\n\n"
 
@@ -186,7 +174,6 @@ class AppState: ObservableObject {
 
     func compileAndDebug() async {
         isCompiling = true
-        bottomPanelVisible = true
         activeBottomTab = .lldb
         buildOutput = "Building with debug symbols...\n"
 
