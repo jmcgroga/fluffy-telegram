@@ -12,8 +12,10 @@ struct LLDBDebuggerView: View {
 
             Divider()
 
-            // Input row: switches between LLDB command prompt and program stdin
-            if appState.lldbIsRunning {
+            // Input row: switches between LLDB command prompt and program stdin.
+            // Only show program stdin when the user explicitly continued execution
+            // (not during automated launch steps or step commands).
+            if appState.lldbInferiorNeedsInput {
                 ProgramInputRow()
             } else {
                 LLDBCommandRow()

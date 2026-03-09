@@ -58,6 +58,9 @@ final class LLDBController: ObservableObject {
 
     @Published private(set) var sessionState: DebuggerSessionState = .idle
     @Published private(set) var lastStopReason: String = ""
+    /// True only while the inferior is executing after the user explicitly pressed Continue.
+    /// Not set during the automated launch sequence or during step commands.
+    @Published private(set) var inferiorNeedsInput: Bool = false
 
     // MARK: Callbacks → AppState
 
@@ -93,15 +96,16 @@ final class LLDBController: ObservableObject {
 
     // MARK: - Data Section Discovery
 
-    /// Find the .data section dynamically using image dump sections
+    /// Find the .data section dynamically using image dump sections.
+    /// Result is cached — the section address never changes during a debugging session.
     private func findDataSection() async -> (address: UInt64, size: UInt64)? {
+        if let cached = cachedDataSection { return cached }
         guard let executablePath = session?.binaryPath else { return nil }
-        
-        // Extract just the filename from the full path
         let executableName = (executablePath as NSString).lastPathComponent
-        
-        let output = await sendAndAwait("image dump sections \(executableName)")
-        return LLDBOutputParser.parseDataSection(from: output)
+        let output = await sendInternal("image dump sections \(executableName)")
+        let result = LLDBOutputParser.parseDataSection(from: output)
+        cachedDataSection = result
+        return result
     }
     
     /// Find the .text section dynamically using image dump sections
@@ -141,21 +145,23 @@ final class LLDBController: ObservableObject {
             }
         }
         
-        // Continue to the first breakpoint (_main)
-        await MainActor.run { 
+        // Continue to the first breakpoint (_main). Do NOT set inferiorNeedsInput — this
+        // is an automated launch step, not a user-initiated continue.
+        await MainActor.run {
             self.sessionState = .running
             self.forwardToDisplay?("continue\n")
         }
         session?.send("continue\n")
         let stopResponse = await awaitPrompt()
-        
+        await MainActor.run { self.forwardToDisplay?(stopResponse) }
+
         // Check if the process actually stopped at a breakpoint or exited
         if LLDBOutputParser.detectProcessExit(in: stopResponse) != nil {
             // Process exited without hitting breakpoint
             await handleStopResponse(stopResponse)
             return
         }
-        
+
         // Process should be stopped at _main breakpoint
         await handleStopResponse(stopResponse)
         
@@ -187,14 +193,16 @@ final class LLDBController: ObservableObject {
 
     func continueExecution() async {
         guard sessionState == .ready else { return }
-        await MainActor.run { 
+        await MainActor.run {
             self.sessionState = .running
+            self.inferiorNeedsInput = true
             self.forwardToDisplay?("process continue\n")
         }
         session?.send("process continue\n")
         let response = await awaitPrompt()
+        await MainActor.run { self.forwardToDisplay?(response) }
         await handleStopResponse(response)
-        
+
         // Only refresh if we stopped (not if process exited)
         let currentState = await MainActor.run { self.sessionState }
         if currentState == .ready {
@@ -215,7 +223,10 @@ final class LLDBController: ObservableObject {
     func terminate() {
         session?.send("quit\n")
         session?.terminate()
-        Task { @MainActor in self.sessionState = .terminated }
+        Task { @MainActor in
+            self.sessionState = .terminated
+            self.inferiorNeedsInput = false
+        }
     }
 
     /// Add a breakpoint at the specified file and line
@@ -242,13 +253,13 @@ final class LLDBController: ObservableObject {
     // MARK: - Internal
 
     private func issueStepCommand(_ command: String) async {
-        await MainActor.run { self.sessionState = .running }
-        // Echo command to display
         await MainActor.run {
+            self.sessionState = .running
             self.forwardToDisplay?(command + "\n")
         }
         session?.send(command + "\n")
         let response = await awaitPrompt()
+        await MainActor.run { self.forwardToDisplay?(response) }
         await handleStopResponse(response)
         await refreshState()
     }
@@ -258,6 +269,7 @@ final class LLDBController: ObservableObject {
         await MainActor.run {
             self.lastStopReason = reason
             self.sessionState = .ready
+            self.inferiorNeedsInput = false
         }
     }
 
@@ -265,11 +277,9 @@ final class LLDBController: ObservableObject {
 
     /// Called by LLDBSession.controllerOutputHandler on every chunk.
     func receiveOutput(_ chunk: String) {
-        // Forward to display on main thread to avoid publishing from background
-        DispatchQueue.main.async { [weak self] in
-            self?.forwardToDisplay?(chunk)
-        }
-        
+        // Do NOT forward raw output here. User-visible forwarding is done explicitly
+        // in sendAndAwait (command echo) and in continueExecution/issueStepCommand
+        // (stop-reason response), keeping internal refresh commands off the console.
         outputLock.lock()
         outputBuffer += chunk
         
@@ -284,6 +294,7 @@ final class LLDBController: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.sessionState = .terminated
+                self.inferiorNeedsInput = false
                 self.onProcessTerminated?(code)
             }
             
@@ -316,49 +327,38 @@ final class LLDBController: ObservableObject {
 
     private func refreshState() async {
         // 1. Register values (general purpose + special)
-        let regOut = await sendAndAwait("register read")
+        let regOut = await sendInternal("register read")
         var values = LLDBOutputParser.parseRegisters(from: regOut)
-        
-        // 2. Read FPSR explicitly (it's not in the default register read output)
-        let fpsrOut = await sendAndAwait("register read fpsr")
+
+        // 2. Read FPSR explicitly (not in the default register read output)
+        let fpsrOut = await sendInternal("register read fpsr")
         let fpsrValues = LLDBOutputParser.parseRegisters(from: fpsrOut)
         values.merge(fpsrValues) { _, new in new }
-        
+
         if !values.isEmpty {
-            await MainActor.run {
-                self.onRegistersUpdated?(values)
-            }
+            await MainActor.run { self.onRegistersUpdated?(values) }
         }
 
         // 3. Current frame / source line
-        let btOut = await sendAndAwait("bt 1")
+        let btOut = await sendInternal("bt 1")
         if let frame = LLDBOutputParser.parseBacktrace(from: btOut, stopReason: lastStopReason) {
-            await MainActor.run {
-                self.onFrameUpdated?(frame)
-            }
+            await MainActor.run { self.onFrameUpdated?(frame) }
         }
 
         // 4. Live stack contents (16 quadwords starting at $sp)
-        let memOut = await sendAndAwait("memory read --format uint8_t[] --size 8 --count 16 $sp")
+        let memOut = await sendInternal("memory read --format uint8_t[] --size 8 --count 16 $sp")
         let stackEntries = LLDBOutputParser.parseMemoryRead(from: memOut)
-        
         if !stackEntries.isEmpty {
-            await MainActor.run {
-                self.onStackMemoryUpdated?(stackEntries)
-            }
+            await MainActor.run { self.onStackMemoryUpdated?(stackEntries) }
         }
-        
-        // 5. Data section contents (find dynamically and read)
+
+        // 5. Data section contents (find dynamically and read; address is cached after first call)
         if let dataSection = await findDataSection(), dataSection.size > 0 {
-            // Calculate number of 8-byte chunks needed
-            let count = (dataSection.size + 7) / 8  // Round up to nearest 8-byte boundary
-            let dataMemOut = await sendAndAwait("memory read --format uint8_t[] --size 8 --count \(count) 0x\(String(dataSection.address, radix: 16))")
+            let count = (dataSection.size + 7) / 8
+            let dataMemOut = await sendInternal("memory read --format uint8_t[] --size 8 --count \(count) 0x\(String(dataSection.address, radix: 16))")
             let dataEntries = LLDBOutputParser.parseMemoryRead(from: dataMemOut)
-            
             if !dataEntries.isEmpty {
-                await MainActor.run {
-                    self.onDataMemoryUpdated?(dataEntries)
-                }
+                await MainActor.run { self.onDataMemoryUpdated?(dataEntries) }
             }
         }
         
@@ -377,14 +377,14 @@ final class LLDBController: ObservableObject {
         }
     }
 
-    // MARK: - Tier-1 sendAndAwait (5 s timeout)
+    // MARK: - Tier-1 sendAndAwait (5 s timeout, echoes to console)
 
     private func sendAndAwait(_ command: String) async -> String {
         // Echo command to display
         await MainActor.run {
             self.forwardToDisplay?(command + "\n")
         }
-        
+
         session?.send(command + "\n")
         let response = await withTaskGroup(of: String.self) { group in
             group.addTask { await self.awaitPrompt() }
@@ -397,6 +397,16 @@ final class LLDBController: ObservableObject {
             return result
         }
         return response
+    }
+
+    // MARK: - Internal command (no echo, no timeout — for refreshState only)
+
+    /// Send a command silently and wait indefinitely for the response.
+    /// Used for internal refresh commands (register read, bt, memory read, image dump)
+    /// so they never appear in the user's console and never leave dangling continuations.
+    private func sendInternal(_ command: String) async -> String {
+        session?.send(command + "\n")
+        return await awaitPrompt()
     }
 
     // MARK: - Await next (lldb) prompt (no timeout)

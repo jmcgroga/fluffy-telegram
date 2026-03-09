@@ -115,6 +115,20 @@ For example, if the TEXT container is `0x0000000100000000-0x0000000100004000` (1
 
 ---
 
+## 2026-03-09 — Fix three LLDB debugger integration bugs
+
+### Fixed
+
+- **Initial panels empty after launch** (`LLDBController.swift`): `findDataSection()` was ignoring its declared `cachedDataSection` field and re-issuing `image dump sections` on every `refreshState()` call. That slow command would hit the 5-second `sendAndAwait` timeout before the data arrived. Fixed by populating the cache on first successful lookup. `image dump sections` is now only ever sent once per debugging session.
+
+- **Deferred refresh output appearing after bad command** (`LLDBController.swift`): All internal refresh commands (`register read`, `bt 1`, `memory read $sp`, `image dump sections`) were echoed to the user's LLDB console via `sendAndAwait` and `receiveOutput`. When they timed out their LLDB responses arrived late, appearing in the console alongside the next user command. Fixed by:
+  - Adding `sendInternal()` — a silent, no-echo, no-timeout variant used exclusively by `refreshState()` and `findDataSection()`.
+  - Removing the blanket `forwardToDisplay` call from `receiveOutput()`. Console output is now forwarded explicitly: command echoes in `sendAndAwait`, and stop-reason responses after `continueExecution()` and `issueStepCommand()`.
+
+- **False "Program stdin" UI** (`LLDBController.swift`, `AppState.swift`, `LLDBDebuggerView.swift`): `lldbIsRunning` (`sessionState == .running`) was used to decide whether to show `ProgramInputRow`. That state is set during the automated launch sequence and every step command, not only when the user explicitly continued execution. Added `inferiorNeedsInput: Bool` to `LLDBController`, set `true` only in `continueExecution()` and cleared by `handleStopResponse()`, process termination, and `terminate()`. `LLDBDebuggerView` now uses `lldbInferiorNeedsInput` (backed by that flag) instead of `lldbIsRunning`.
+
+---
+
 ## 2026-03-08 — Repository restructure to standard Xcode project layout
 
 ### Changed

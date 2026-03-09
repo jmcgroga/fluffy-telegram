@@ -68,7 +68,8 @@ The Xcode project uses a single `PBXFileSystemSynchronizedRootGroup` for `ARM64L
 | `buildOutput` | `String` | Streamed compiler + program output |
 | `lldbOutput` | `String` | Streamed raw LLDB console text |
 | `terminalOutput` | `String` | Streamed shell output |
-| `lldbController` | `LLDBController` | Published so views can read `sessionState` and `lastStopReason` |
+| `lldbController` | `LLDBController` | Published so views can read `sessionState`, `lastStopReason`, `inferiorNeedsInput` |
+| `lldbInferiorNeedsInput` | `Bool` (computed) | `true` only when user continued execution and inferior may block on stdin |
 | `currentExecutionLine` | `Int?` | 1-based line number; drives gutter arrow and syntax storage |
 | `lastChangedRegisters` | `Set<String>` | Register names that changed on last step |
 | `lastRegisterChangeSummary` | `String` | Human-readable chip text, e.g. `"x0: 0x2A  ·  sp: 0x16F…"` |
@@ -116,36 +117,46 @@ Prompt-delimited command/response correlator sitting on top of `LLDBSession`.
 
 ```
 idle → launching → ready ↔ running
-                 ↘ waitingResponse ↗
                  → terminated / error
 ```
 
 - `launching`: LLDB process spawned; waiting for first `(lldb) ` prompt
 - `ready`: at a breakpoint/step; user can issue commands
-- `running`: inferior executing; `sendProgramInput` routes stdin to it
-- `waitingResponse`: sent a command; buffering until next prompt (5 s timeout)
+- `running`: inferior executing after a step or continue command
+
+### `inferiorNeedsInput: Bool`
+Published flag set **only** in `continueExecution()` (after the user explicitly presses Continue). Cleared by `handleStopResponse()`, `terminate()`, and the process-exit path. `LLDBDebuggerView` uses this — not `sessionState == .running` — to decide whether to show the program-stdin input row. This prevents the stdin row from appearing during the automated launch sequence or during step commands.
 
 ### `sendAndAwait(_ command: String) async -> String`
-Tier-1 send: sets state to `.waitingResponse`, sends the command, races `awaitPrompt()` against a 5-second timeout. Used for all internal queries (register read, bt, memory read) and `sendRawCommand`.
+User-facing send: echoes the command to the console display, sends it to LLDB, and races `awaitPrompt()` against a 5-second timeout. Used only for `sendRawCommand` (user-typed LLDB commands).
+
+### `sendInternal(_ command: String) async -> String`
+Silent internal send: no echo, no timeout. Used exclusively by `refreshState()` and `findDataSection()`. Responses from internal commands never appear in the user's console and never leave dangling continuations (no timeout fires).
 
 ### `awaitPrompt() async -> String`
-No-timeout await for the next `(lldb) ` prompt. Used for `run` and `process continue` where execution time is unbounded.
+No-timeout await for the next `(lldb) ` prompt. Checks `outputBuffer` first; if a prompt is already present it returns immediately. Otherwise stores a `CheckedContinuation` in the `promptContinuations` FIFO queue. `receiveOutput` drains the queue in arrival order, so interleaved commands are always correlated correctly.
+
+### `receiveOutput(_ chunk: String)`
+Called synchronously by `LLDBSession.controllerOutputHandler` on the output-reader thread. Does **not** forward to display (that is done explicitly in `sendAndAwait`, `continueExecution`, and `issueStepCommand`). Locks `outputLock`, appends to `outputBuffer`, checks for process-exit signals, then drains all available `(lldb) ` prompts, resuming waiting continuations in FIFO order.
 
 ### `refreshState()` — six phases after every stop
-1. `register read` → `LLDBOutputParser.parseRegisters` → `onRegistersUpdated`
-2. `register read fpsr` → parse FPSR register explicitly
-3. `bt 1` → `LLDBOutputParser.parseBacktrace` → `onFrameUpdated`
-4. `memory read $sp --count 16 --size 8` → `LLDBOutputParser.parseMemoryRead` → `onStackMemoryUpdated`
-5. `image dump sections` → `LLDBOutputParser.parseDataSection` → `memory read` (combined range of all `__DATA` subsections) → `onDataMemoryUpdated`
-6. `image dump sections` → `LLDBOutputParser.parseTextSection` → `memory read` (combined range of all `__TEXT` subsections) → `onTextMemoryUpdated`
+All six phases use `sendInternal` (silent, no-echo, no-timeout) so no internal commands appear in the user's console.
 
-**Note**: Both `parseDataSection()` and `parseTextSection()` find all subsections within the segment and calculate the combined range from the first subsection to the last. This avoids reading large unused regions in the container that are filled with zeros.
+1. `register read` via `sendInternal` → `parseRegisters` → `onRegistersUpdated`
+2. `register read fpsr` via `sendInternal` → merged into register values
+3. `bt 1` via `sendInternal` → `parseBacktrace` → `onFrameUpdated`
+4. `memory read $sp --count 16 --size 8` via `sendInternal` → `parseMemoryRead` → `onStackMemoryUpdated`
+5. `findDataSection()` (cached) + `memory read <addr>` via `sendInternal` → `onDataMemoryUpdated`
+6. `findTextSection()` + `memory read <addr>` via `sendInternal` → `onTextMemoryUpdated`
+
+**Note**: Both `parseDataSection()` and `parseTextSection()` find all subsections within the segment and calculate the combined range from the first subsection to the last. This avoids displaying large zero-padded container regions.
 
 **TEXT subsections matched**: `code` (e.g., `__text`, `__stubs`), `compact_unwind`, `literal_pointers`, `cstring_literals`, `symbols`, `unwind_info`
 
 **DATA subsections matched**: `data` (e.g., `__data`), `zero_fill` (e.g., `__bss`), `common` (e.g., `__common`)
 
-**Example**: If TEXT container is `0x100000000-0x100004000` but only `__text` at `0x100000458-0x100000478` and `__stubs` at `0x100000478-0x100000484` exist, the parser returns `0x100000458-0x100000484` (44 bytes) instead of the full 16 KB container.
+### `findDataSection()` — cached section lookup
+Issues `image dump sections <binary>` via `sendInternal` once, caches the result in `cachedDataSection`. Subsequent calls return the cached value immediately without any LLDB traffic. The address never changes within a debugging session.
 
 ### `LLDBOutputParser`
 Static enum with regex-based parsers:

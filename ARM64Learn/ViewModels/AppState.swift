@@ -136,6 +136,9 @@ class AppState: ObservableObject {
     var debuggerState: DebuggerSessionState { lldbController.sessionState }
     var lldbIsPaused: Bool { lldbController.sessionState == .ready }
     var lldbIsRunning: Bool { lldbController.sessionState == .running }
+    /// True only while the inferior is executing after the user pressed Continue.
+    /// Use this (not lldbIsRunning) to show the program stdin input row.
+    var lldbInferiorNeedsInput: Bool { lldbController.inferiorNeedsInput }
 
     // Terminal
     @Published var terminalOutput: String = ""
