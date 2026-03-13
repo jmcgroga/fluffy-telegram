@@ -4,6 +4,146 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-13 — Fix debugging controls not working; fix step hang on process exit
+
+### Bug: debugging controls non-functional after starting a session
+
+`compileAndDebug()` only called `waitForStartup()` (the `file` command), so no inferior was ever launched. Step and continue buttons had no process to act on.
+
+**Fix**: `compileAndDebug()` now calls `launchAndBreakAtMain()` which runs the full sequence: load binary → launch inferior → set breakpoints → continue to main → refresh panels. `lldbSession` and `lldbController` are assigned before the launch sequence so the UI observes all intermediate state transitions (launching → running → ready) in real time.
+
+### Bug: step commands hang when the inferior exits during a step
+
+`issueStepCommand()` always called `refreshState()` after `handleStopResponse()`. If the inferior exited during the step, `refreshState()` sent commands to a dead session and waited forever for responses that never came.
+
+Additionally, `handleStopResponse()` always set `sessionState = .ready`, silently overriding the `.terminated` state set by `receiveOutput` when it detected the process exit.
+
+**Fix**:
+- `handleStopResponse()` now checks `detectProcessExit` first; if the process exited it only clears `inferiorNeedsInput` and returns, leaving the `.terminated` state intact
+- `issueStepCommand()` checks `sessionState` after `handleStopResponse()` and only calls `refreshState()` when still `.ready`
+
+---
+
+## 2026-03-13 — Add unit tests for LLDB parser and controller
+
+Added comprehensive unit tests in `ARM64LearnTests/ARM64LearnTests.swift` using Swift Testing:
+
+- **`LLDBOutputParser.parseRegisters`** — standard registers, `fp`/`lr`/`cpsr` aliases, zero values, empty input, unrecognisable lines
+- **`LLDBOutputParser.parseBacktrace`** — frames with/without source location, default stop reason, nil on no match
+- **`LLDBOutputParser.parseStopReason`** — breakpoint, step, signal, whitespace trimming, nil on no match
+- **`LLDBOutputParser.parseMemoryRead`** — single/multiple rows, little-endian conversion, all-zero, all-0xFF, sub-8-byte rows ignored
+- **`LLDBOutputParser.detectProcessExit`** — exit 0, non-zero, embedded in block, no exit, partial word
+- **`LLDBOutputParser.parseDataSection`** — single subsection, combined range across multiple subsections, nil when absent
+- **`LLDBOutputParser.parseTextSection`** — same as above for `__TEXT`
+- **`LLDBController` initial state** — `sessionState == .idle`, `lastStopReason == ""`, `inferiorNeedsInput == false`
+- **`LLDBController.attach()`** — transitions `sessionState` to `.launching`
+- **`LLDBController.receiveOutput` — process exit path** — `onProcessTerminated` callback fired with correct code, `sessionState` → `.terminated`, `inferiorNeedsInput` cleared, no spurious callbacks for non-exit output
+- **`DebuggerSessionState`** — `Equatable` correctness, label non-emptiness
+
+---
+
+## 2026-03-13 — Remove debug command panel
+
+Removed `DebugCommandPanel`, `CommandButton`, and `SectionHeader` from `LLDBDebuggerView` — the step-by-step manual launch buttons were only needed while debugging the LLDB integration. `LLDBDebuggerView` now shows only the console output and command input row. All launch steps are driven automatically by `launchAndBreakAtMain()` via the Run button in `DebuggerControlBar`.
+
+---
+
+## 2026-03-13 — Fix `continue` hang; add command/response visual distinction in LLDB console
+
+### Bug: `continue` hung indefinitely (root cause confirmed)
+
+Live testing revealed the exact mechanism: while the inferior is running after `continue`, LLDB reads bytes from its control pipe (stdin) and **echoes them verbatim to output without executing them**. The UUID sentinel (`script print("LLDB_DONE_UUID")`) was consumed this way — it appeared in LLDB's output as plain text without the `(lldb) ` echo prefix, and `LLDB_DONE_UUID\n` was never output, so `receiveOutput` hung forever waiting for it.
+
+Note: `settings set target.process.stdin /dev/null` (attempted in the previous fix) is not a valid LLDB setting path and does not help.
+
+**Fix: hybrid delimiter strategy**
+
+Commands that run the inferior (`continue`, `process continue`, step commands) now use `waitForStop: true` in `send()`. No sentinel is sent for these commands. Instead, `receiveOutput` waits for `") stopped.\n"` — the end of every LLDB stop notification (`Target N: (name) stopped.\n`). All other commands continue using the UUID sentinel approach.
+
+- `PendingCommand` gets a `waitForStop: Bool` field
+- `send(_:waitForStop:)` takes the new parameter; skips the sentinel write when `true`
+- `receiveOutput` drain loop has two paths: sentinel search and stop-notification search
+- `continueToBreakpoint()`, `continueExecution()`, `issueStepCommand()` pass `waitForStop: true`
+
+### Display: commands now shown with `(lldb) ` prefix
+
+All panel-initiated commands were displayed without the `(lldb) ` prefix, so they appeared the same color as response text. All `display()` call sites for commands now use `(lldb) CMD` format, matching `ConsoleOutputView`'s existing rule that colors `(lldb)` lines blue. Commands are now visually distinct from responses.
+
+---
+
+## 2026-03-13 — Robust LLDB output parsing via UUID sentinel commands
+
+### Problem
+The previous `(lldb) ` prompt search was fragile:
+- `(lldb) ` appearing inside command output (help text, stop notifications) prematurely terminated responses
+- Any startup text before the first command could orphan the `file` command's echo
+- `hasPrefix` echo-stripping only worked when the echo was exactly at the buffer start
+
+### Solution
+After every real command, `send()` also writes a hidden sentinel to LLDB stdin:
+```
+script print("LLDB_DONE_UUID")
+```
+`receiveOutput` waits for `LLDB_DONE_UUID\n` — a string that cannot appear in legitimate command output — instead of scanning for `(lldb) `.
+
+### Changed
+- **`LLDBController.PendingCommand`** — replaced `echo: String` field with `command`, `sentinelID`, and computed `sentinelOutput`/`commandEcho`/`sentinelCmdEcho` properties
+- **`LLDBController.send()`** — generates a UUID sentinel per call, sends both the real command and `script print("LLDB_DONE_UUID")` atomically under `outputLock`
+- **`LLDBController.receiveOutput()` drain loop** — now searches for `pending.sentinelOutput` instead of `(lldb) `; strips command echo from start and sentinel echo from end of response; removes the `.launching → .ready` state transition (moved to `waitForStartup`)
+- **`LLDBController.waitForStartup()`** — transitions `sessionState` to `.ready` after the `file` command sentinel resolves
+
+---
+
+## 2026-03-12 — Fix LLDB response off-by-one caused by startup echo
+
+### Root cause
+When LLDB is launched with a binary argument it emits `(lldb) target create "..."` (the auto-run command with the prompt prefix) followed by the response and a trailing `(lldb) ` ready prompt. The prompt parser searched for the first `(lldb) ` in the buffer, which matched the startup echo at position 0 instead of the actual ready prompt at the end. This left the real ready prompt as a stale entry in the buffer. Every subsequent `send()` call consumed the *previous* command's response — responses were shifted by one, so the first button press showed no output, typing `pwd` showed the launch output, etc.
+
+### Fixed
+- **`LLDBSession.start()`** — LLDB is now launched with no arguments instead of passing the binary path on the command line. This eliminates the startup `(lldb) target create ...` echo that was the root cause of the response off-by-one.
+- **`LLDBController` — command echo stripping** (root cause fix): LLDB echoes every command as `(lldb) commandText\n` before its response, even in non-interactive/pipe mode. `receiveOutput` was treating the echo's `(lldb) ` as the real response prompt, resolving continuations with empty strings and leaving the actual response stranded in the buffer. Fixed with `PendingCommand` struct that carries the expected `echo: String` alongside each continuation. `receiveOutput` now strips both the full `(lldb) commandText\n` prefix (typical first chunk) and the bare `commandText\n` leftover (after a prior prompt search already consumed the `(lldb) ` of a batched echo) before scanning for the real prompt.
+- **`LLDBController.waitForStartup()`** — Removed the now-unnecessary `waitForPrompt()` call. LLDB with pipe stdin does not emit an initial prompt before receiving a command; the echo-stripping in `send()` handles everything correctly from the first `file` command onward.
+- **`ProcessRunner.signForDebugging()`** (new) — After debug compilation, ad-hoc signs the binary with the `com.apple.security.get-task-allow` entitlement. Without this, macOS denies LLDB the task port right and `process launch --stop-at-entry` hangs indefinitely.
+- **`AppState.compileAndDebug()`** — `lldbSession` and `lldbController` are now assigned **after** `waitForStartup()` completes instead of before. This prevents the command input from being live while `sessionState` is still `.launching`, which caused manually typed commands to be silently dropped (sendRawCommand returns "" when state != .ready).
+
+---
+
+## 2026-03-11 — Add debug command panel; manual step-by-step debugger initialization
+
+### Added
+- **Debug command panel** — Left sidebar in the LLDB tab with buttons for each initialization step. Buttons are in execution order and show the LLDB command they will run. Spinner shown while each step is executing.
+  - **Launch Sequence**: (1) Launch stop-at-entry, (2) Break at main, (3) Set user breakpoints, (4) Continue to breakpoint
+  - **Read State**: (a) Registers, (b) Backtrace, (c) Stack memory, (d) __DATA section, (e) __TEXT section
+  - **Batch**: "Run All Launch Steps" and "Refresh All State" convenience buttons
+- **Individual public methods on LLDBController** — `waitForStartup()`, `launchStopAtEntry()`, `breakAtMain()`, `setUserBreakpoints()`, `continueToBreakpoint()`, `readRegisters()`, `readBacktrace()`, `readStackMemory()`, `readDataSection()`, `readTextSection()`. Each wraps a single LLDB interaction and can be called independently.
+
+### Changed
+- **`compileAndDebug()` no longer auto-runs the launch sequence** — It only consumes the LLDB startup prompt. The user drives each step from the debug command panel (or uses "Run All" for the old automatic behavior).
+- **`refreshState()` made public** — Now delegates to the individual read methods. Called by step/continue commands and the "Refresh All State" button.
+- **`launchAndBreakAtMain()` preserved as convenience** — Now composes the individual step methods. Used by the "Run All Launch Steps" button.
+
+---
+
+## 2026-03-11 — Rewrite LLDB command execution to fix debugger hang on launch
+
+### Root cause
+`LLDBController` had 5 overlapping send/await variants (`awaitPrompt`, `sendAndAwaitPrompt`, `sendAndAwait`, `sendInternal`, `sendRawCommand`) with inconsistent timeout, display, and locking behavior. A race condition in the original `send → awaitPrompt` sequence allowed LLDB responses to arrive before a continuation was registered, causing `receiveOutput` to silently discard the response. This made the controller hang forever during `refreshState` (register read, memory read, etc.) after the initial breakpoint.
+
+### Fixed
+- **Race condition in prompt handling** — The old code called `session.send()` then `awaitPrompt()` as separate steps. If LLDB responded before `awaitPrompt()` registered its continuation, `receiveOutput` consumed the `(lldb)` prompt with no waiting continuation and discarded the response. Commands would hang indefinitely.
+- **Prompt discard when no continuation waiting** — `receiveOutput` now leaves buffered prompts in place when no continuation is registered, instead of consuming and discarding them.
+- **Lock held during continuation resume** — Continuations are now collected and resumed **after** `outputLock` is released, preventing re-entrancy deadlocks.
+- **Double console output** — `LLDBSession` was forwarding raw output to both a display handler and the controller parser. Now it only sends to the controller parser; all display forwarding is managed explicitly by `LLDBController`.
+
+### Changed
+- **Single command primitive** — Replaced 5 overlapping send methods with one: `send(_ command:) async -> String`. It atomically registers a continuation then sends. No timeout, no display, no side effects. All higher-level methods compose on top.
+- **Explicit display forwarding** — New `display(_ text:) async` helper. Called at each call site that should show output to the user. `refreshState` calls `send()` directly without `display()`, keeping internal commands hidden.
+- **`sendRawCommand` simplified** — Now a thin wrapper around `send()`. No timeout, no echo. `AppState.sendLLDBCommand` manages the `(lldb)` prefix and appends the response.
+- **`findTextSection` now caches** — Like `findDataSection`, cached after first lookup.
+- **`LLDBSession` output path** — Only forwards to controller parser. Termination message uses the separate `outputHandler`.
+
+---
+
 ## 2026-03-08 — Move debugger controls to editor header and console output to separate window
 
 ### Changed

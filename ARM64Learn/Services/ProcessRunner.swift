@@ -54,11 +54,32 @@ final class ProcessRunner {
 
         let result = await runCompiler(source: sourceURL, output: outputURL, language: language, debug: true)
         if result.exitCode == 0 {
+            // Sign with get-task-allow so LLDB can attach to the process.
+            // Without this entitlement macOS denies LLDB the task port right,
+            // causing process launch --stop-at-entry to hang indefinitely.
+            await signForDebugging(url: outputURL)
             let msg = "Build with debug symbols succeeded ✓\nBinary: \(outputURL.path)\n\n"
             return (true, outputURL.path, msg + result.output)
         } else {
             return (false, nil, "Build FAILED ✗\n\n" + result.output)
         }
+    }
+
+    private func signForDebugging(url: URL) async {
+        let plist = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>com.apple.security.get-task-allow</key>
+                <true/>
+            </dict>
+            </plist>
+            """
+        let entsURL = url.deletingLastPathComponent().appendingPathComponent("debug.entitlements")
+        try? plist.write(to: entsURL, atomically: true, encoding: .utf8)
+        _ = await shell("/usr/bin/codesign",
+                        args: ["-f", "-s", "-", "--entitlements", entsURL.path, url.path])
     }
 
     // MARK: - Internal: Compiler Invocation
@@ -173,7 +194,7 @@ final class LLDBSession {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: lldbPath)
-        process.arguments = [binaryPath]
+        process.arguments = []
 
         let stdin  = Pipe()
         let stdout = Pipe()
@@ -182,28 +203,23 @@ final class LLDBSession {
         process.standardOutput = stdout
         process.standardError  = stderr
 
-        // Capture handlers outside of @Sendable closures
-        let displayHandler = outputHandler
+        // Capture handler outside of @Sendable closures.
+        // Only the controller parser receives raw output. Display forwarding is
+        // managed by LLDBController so internal refresh commands stay hidden.
         let parserHandler = controllerOutputHandler
 
-        // Stream output to display handler and controller parser
         stdout.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            parserHandler?(text)   // parser (sync, before main queue)
-            DispatchQueue.main.async {
-                displayHandler?(text)
-            }
+            parserHandler?(text)
         }
         stderr.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            parserHandler?(text)   // parser
-            DispatchQueue.main.async {
-                displayHandler?(text)
-            }
+            parserHandler?(text)
         }
 
+        let displayHandler = outputHandler
         process.terminationHandler = { _ in
             DispatchQueue.main.async {
                 displayHandler?("\n[LLDB session ended]\n")

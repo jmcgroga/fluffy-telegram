@@ -51,7 +51,17 @@ struct ParsedFrame {
 ///  - A prompt-delimited command/response correlator
 ///  - Automatic register + backtrace + stack-memory refresh after every stop
 ///  - Program stdin forwarding when the inferior is running
-///  - Two-tier timeout: 5 s for instant commands; no timeout for run/continue
+///
+/// ## Command execution architecture
+///
+/// There is exactly ONE primitive for sending a command and getting its response:
+///
+///     `send(_ command:) async -> String`
+///
+/// It registers a continuation, sends the command, and awaits the `(lldb) ` prompt.
+/// No timeout, no display, no side effects. Every higher-level method composes on top.
+///
+/// Display forwarding is opt-in at each call site via `display(_:)`.
 final class LLDBController: ObservableObject {
 
     // MARK: Published state
@@ -70,15 +80,44 @@ final class LLDBController: ObservableObject {
     var onStackMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
     var onDataMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
     var onTextMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
-    /// Raw output forwarded to the console display (unchanged).
+    /// Raw output forwarded to the console display (unchanged). Called on MainActor.
     var forwardToDisplay: ((String) -> Void)?
 
     // MARK: Private
 
     private weak var session: LLDBSession?
     private var outputBuffer = ""
-    private var promptContinuations: [CheckedContinuation<String, Never>] = []
     private let outputLock = NSLock()
+
+    /// Each pending command carries its continuation, original command text, and
+    /// either a UUID sentinel (for commands where LLDB stays in command mode) or a
+    /// "wait for stop" flag (for commands that run the inferior).
+    ///
+    /// ## Two delimiter modes
+    ///
+    /// **Sentinel mode** (`waitForStop == false`, default):
+    ///   After the real command we also send `script print("LLDB_DONE_UUID")`.
+    ///   `receiveOutput` waits for `LLDB_DONE_UUID\n` — unambiguous regardless of
+    ///   what the command outputs.
+    ///
+    /// **Stop-notification mode** (`waitForStop == true`):
+    ///   Used by `continue`, `process continue`, and step commands. While the
+    ///   inferior is running, LLDB reads bytes from its control pipe (our stdin)
+    ///   and echoes them verbatim to output without executing them. Sending a
+    ///   sentinel during this window means the sentinel bytes are consumed and
+    ///   never executed, so `send()` hangs forever. Instead, NO sentinel is sent;
+    ///   `receiveOutput` waits for `") stopped.\n"` — the last line of every LLDB
+    ///   stop notification — as the natural response delimiter.
+    private struct PendingCommand {
+        let continuation: CheckedContinuation<String, Never>
+        let command: String          // original command text (for echo stripping)
+        let sentinelID: String       // UUID used in sentinel (ignored when waitForStop)
+        let waitForStop: Bool        // true → detect stop notification; false → sentinel
+        var sentinelOutput: String { "LLDB_DONE_\(sentinelID)\n" }
+        var commandEcho: String { "(lldb) \(command)\n" }
+        var sentinelCmdEcho: String { "(lldb) script print(\"LLDB_DONE_\(sentinelID)\")\n" }
+    }
+    private var promptContinuations: [PendingCommand] = []
     
     // Cache section info (doesn't change during execution)
     private var cachedDataSection: (address: UInt64, size: UInt64)? = nil
@@ -94,82 +133,304 @@ final class LLDBController: ObservableObject {
         }
     }
 
-    // MARK: - Data Section Discovery
+    // =========================================================================
+    // MARK: - Primitive: send one command → get one response
+    // =========================================================================
 
-    /// Find the .data section dynamically using image dump sections.
-    /// Result is cached — the section address never changes during a debugging session.
+    /// Send a command and return its output. This is the ONLY way to execute
+    /// an LLDB command. Does NOT echo to display. Does NOT timeout.
+    ///
+    /// - Parameter waitForStop: Pass `true` for commands that run the inferior
+    ///   (`continue`, step commands). No sentinel is sent; `receiveOutput` resolves
+    ///   the continuation when the stop notification arrives. Pass `false` (default)
+    ///   for all other commands — a UUID sentinel is appended and used as the delimiter.
+    private func send(_ command: String, waitForStop: Bool = false) async -> String {
+        let sentinelID = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        return await withCheckedContinuation { continuation in
+            outputLock.lock()
+            promptContinuations.append(PendingCommand(
+                continuation: continuation,
+                command: command,
+                sentinelID: sentinelID,
+                waitForStop: waitForStop
+            ))
+            session?.send(command + "\n")
+            if !waitForStop {
+                // Sentinel: LLDB will execute this after the real command and output
+                // LLDB_DONE_UUID, which receiveOutput uses as the response delimiter.
+                session?.send("script print(\"LLDB_DONE_\(sentinelID)\")\n")
+            }
+            // Both writes happen under the lock so receiveOutput cannot drain
+            // stale data before the command is registered.
+            outputLock.unlock()
+        }
+    }
+
+    /// Append text to the user-visible LLDB console.
+    private func display(_ text: String) async {
+        await MainActor.run { forwardToDisplay?(text) }
+    }
+
+    // =========================================================================
+    // MARK: - Output Buffering (called from LLDBSession's background reader)
+    // =========================================================================
+
+    /// Called by LLDBSession.controllerOutputHandler on every chunk of LLDB output.
+    func receiveOutput(_ chunk: String) {
+        outputLock.lock()
+        outputBuffer += chunk
+        
+        // Check for process exit before prompt parsing
+        if let code = LLDBOutputParser.detectProcessExit(in: outputBuffer) {
+            let buffer = outputBuffer
+            outputBuffer = ""
+            let pending = promptContinuations
+            promptContinuations = []
+            outputLock.unlock()
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.sessionState = .terminated
+                self.inferiorNeedsInput = false
+                self.onProcessTerminated?(code)
+            }
+
+            for p in pending {
+                p.continuation.resume(returning: buffer)
+            }
+            return
+        }
+
+        // Drain responses that have a waiting continuation. Two delimiter modes:
+        //
+        // Sentinel mode (waitForStop == false):
+        //   Wait for "LLDB_DONE_UUID\n" — only appears when LLDB executes the
+        //   sentinel script command we appended after the real command.
+        //
+        // Stop-notification mode (waitForStop == true):
+        //   Wait for ") stopped.\n" — the final line of every LLDB stop notification.
+        //   No sentinel is sent for these commands because LLDB reads and echoes
+        //   control-pipe bytes while the inferior runs, consuming any sentinel before
+        //   executing it.
+        var toResume: [(CheckedContinuation<String, Never>, String)] = []
+
+        while !promptContinuations.isEmpty {
+            let pending = promptContinuations[0]
+
+            if pending.waitForStop {
+                // Stop-notification mode: wait for the stop notification end marker.
+                // Every LLDB stop notification ends with:
+                //   Target N: (binary-name) stopped.\n
+                // The closing paren + " stopped.\n" is the most specific part to match.
+                guard let stopRange = outputBuffer.range(of: ") stopped.\n") else { break }
+
+                var response = String(outputBuffer[outputBuffer.startIndex..<stopRange.upperBound])
+
+                // Advance buffer. Skip any bare "(lldb) " prompt that may have already
+                // arrived — it would be the prompt before the next command's echo.
+                var remainder = outputBuffer[stopRange.upperBound...]
+                if remainder.hasPrefix("(lldb) ") {
+                    remainder = remainder.dropFirst("(lldb) ".count)
+                }
+                outputBuffer = String(remainder)
+
+                // Strip command echo from start of response
+                if response.hasPrefix(pending.commandEcho) {
+                    response = String(response.dropFirst(pending.commandEcho.count))
+                }
+
+                toResume.append((promptContinuations.removeFirst().continuation, response))
+
+            } else {
+                // Sentinel mode: wait for "LLDB_DONE_UUID\n".
+                guard let sentinelRange = outputBuffer.range(of: pending.sentinelOutput) else { break }
+
+                // Everything before the sentinel is the raw output for this command.
+                // It includes: (lldb) COMMAND\n, real output, (lldb) script print("ID")\n
+                var response = String(outputBuffer[outputBuffer.startIndex..<sentinelRange.lowerBound])
+
+                // Advance buffer past the sentinel line. Also strip any bare "(lldb) " prompt
+                // that arrived in the same chunk — leave anything else intact.
+                var remainder = outputBuffer[sentinelRange.upperBound...]
+                if remainder.hasPrefix("(lldb) ") {
+                    remainder = remainder.dropFirst("(lldb) ".count)
+                }
+                outputBuffer = String(remainder)
+
+                // Strip command echo from start of response
+                if response.hasPrefix(pending.commandEcho) {
+                    response = String(response.dropFirst(pending.commandEcho.count))
+                }
+                // Strip sentinel command echo from end of response
+                if response.hasSuffix(pending.sentinelCmdEcho) {
+                    response = String(response.dropLast(pending.sentinelCmdEcho.count))
+                }
+
+                toResume.append((promptContinuations.removeFirst().continuation, response))
+            }
+        }
+
+        outputLock.unlock()
+
+        // Resume outside the lock to prevent re-entrancy deadlocks
+        for (continuation, response) in toResume {
+            continuation.resume(returning: response)
+        }
+    }
+
+    // =========================================================================
+    // MARK: - Section Discovery (cached)
+    // =========================================================================
+
     private func findDataSection() async -> (address: UInt64, size: UInt64)? {
         if let cached = cachedDataSection { return cached }
         guard let executablePath = session?.binaryPath else { return nil }
-        let executableName = (executablePath as NSString).lastPathComponent
-        let output = await sendInternal("image dump sections \(executableName)")
+        let name = (executablePath as NSString).lastPathComponent
+        let output = await send("image dump sections \(name)")
         let result = LLDBOutputParser.parseDataSection(from: output)
         cachedDataSection = result
         return result
     }
     
-    /// Find the .text section dynamically using image dump sections
     private func findTextSection() async -> (address: UInt64, size: UInt64)? {
+        if let cached = cachedTextSection { return cached }
         guard let executablePath = session?.binaryPath else { return nil }
-        
-        // Extract just the filename from the full path
-        let executableName = (executablePath as NSString).lastPathComponent
-        
-        let output = await sendAndAwait("image dump sections \(executableName)")
-        return LLDBOutputParser.parseTextSection(from: output)
+        let name = (executablePath as NSString).lastPathComponent
+        let output = await send("image dump sections \(name)")
+        let result = LLDBOutputParser.parseTextSection(from: output)
+        cachedTextSection = result
+        return result
     }
 
-    // MARK: - Launch & Break at _main
+    // =========================================================================
+    // MARK: - Launch Steps (called individually from the debug command panel)
+    // =========================================================================
 
-    func launchAndBreakAtMain(breakpointLines: [Int] = [], sourceFile: String? = nil) async {
-        // First, consume any initial LLDB startup output (from 'target create')
-        // LLDB automatically runs "target create" when started with a binary path
-        _ = await awaitPrompt()
-        
-        // Launch with --stop-at-entry to stop at the dynamic linker
-        // This ensures the binary is loaded before we set breakpoints
-        await MainActor.run { 
-            self.sessionState = .running
-            self.forwardToDisplay?("process launch --stop-at-entry\n")
-        }
-        session?.send("process launch --stop-at-entry\n")
-        _ = await awaitPrompt()
-        
-        // Now the binary is loaded, set breakpoint at main
-        _ = await sendAndAwait("b main")
-        
-        // Set user breakpoints
-        if let file = sourceFile {
-            for line in breakpointLines {
-                _ = await sendAndAwait("breakpoint set --file \(file) --line \(line)")
-            }
-        }
-        
-        // Continue to the first breakpoint (_main). Do NOT set inferiorNeedsInput — this
-        // is an automated launch step, not a user-initiated continue.
-        await MainActor.run {
-            self.sessionState = .running
-            self.forwardToDisplay?("continue\n")
-        }
-        session?.send("continue\n")
-        let stopResponse = await awaitPrompt()
-        await MainActor.run { self.forwardToDisplay?(stopResponse) }
+    /// Step 1: Load the binary into LLDB using the `file` command.
+    /// Called automatically when the session starts.
+    ///
+    /// LLDB is launched with no arguments. With a pipe for stdin (non-interactive mode)
+    /// it does NOT emit an initial `(lldb) ` prompt, so there is nothing to wait for
+    /// before sending the first command. LLDB does output `(lldb) ` after processing
+    /// any command, so `send()` resolves correctly from the file command's response.
+    func waitForStartup() async {
+        guard let path = session?.binaryPath else { return }
+        let cmd = "file \"\(path)\""
+        await display("(lldb) \(cmd)\n")
+        let response = await send(cmd)
+        await display(response)
+        await MainActor.run { self.sessionState = .ready }
+    }
 
-        // Check if the process actually stopped at a breakpoint or exited
+    /// Step 2: Launch the inferior with --stop-at-entry so the binary is loaded.
+    func launchStopAtEntry() async {
+        await MainActor.run { self.sessionState = .running }
+        await display("(lldb) process launch --stop-at-entry\n")
+        let response = await send("process launch --stop-at-entry")
+        await display(response)
+        await MainActor.run { self.sessionState = .ready }
+    }
+
+    /// Step 3: Set breakpoint at main.
+    func breakAtMain() async {
+        await display("(lldb) b main\n")
+        let response = await send("b main")
+        await display(response)
+    }
+
+    /// Step 4: Set user breakpoints at specific file/line locations.
+    func setUserBreakpoints(breakpointLines: [Int], sourceFile: String) async {
+        for line in breakpointLines {
+            let cmd = "breakpoint set --file \(sourceFile) --line \(line)"
+            await display("(lldb) \(cmd)\n")
+            let r = await send(cmd)
+            await display(r)
+        }
+    }
+
+    /// Step 5: Continue execution to the first breakpoint.
+    func continueToBreakpoint() async {
+        await MainActor.run { self.sessionState = .running }
+        await display("(lldb) continue\n")
+        let stopResponse = await send("continue", waitForStop: true)
+        await display(stopResponse)
+
         if LLDBOutputParser.detectProcessExit(in: stopResponse) != nil {
-            // Process exited without hitting breakpoint
             await handleStopResponse(stopResponse)
             return
         }
-
-        // Process should be stopped at _main breakpoint
         await handleStopResponse(stopResponse)
-        
-        // Refresh state now that we're stopped
+    }
+
+    /// Step 6: Read registers and populate the register panel.
+    func readRegisters() async {
+        let regOut = await send("register read")
+        var values = LLDBOutputParser.parseRegisters(from: regOut)
+
+        let fpsrOut = await send("register read fpsr")
+        values.merge(LLDBOutputParser.parseRegisters(from: fpsrOut)) { _, new in new }
+
+        if !values.isEmpty {
+            await MainActor.run { self.onRegistersUpdated?(values) }
+        }
+    }
+
+    /// Step 7: Read the backtrace to determine the current frame/source line.
+    func readBacktrace() async {
+        let btOut = await send("bt 1")
+        if let frame = LLDBOutputParser.parseBacktrace(from: btOut, stopReason: lastStopReason) {
+            await MainActor.run { self.onFrameUpdated?(frame) }
+        }
+    }
+
+    /// Step 8: Read stack memory (16 quadwords from $sp).
+    func readStackMemory() async {
+        let memOut = await send("memory read --format uint8_t[] --size 8 --count 16 $sp")
+        let stackEntries = LLDBOutputParser.parseMemoryRead(from: memOut)
+        if !stackEntries.isEmpty {
+            await MainActor.run { self.onStackMemoryUpdated?(stackEntries) }
+        }
+    }
+
+    /// Step 9: Read __DATA section contents.
+    func readDataSection() async {
+        if let ds = await findDataSection(), ds.size > 0 {
+            let count = (ds.size + 7) / 8
+            let out = await send("memory read --format uint8_t[] --size 8 --count \(count) 0x\(String(ds.address, radix: 16))")
+            let entries = LLDBOutputParser.parseMemoryRead(from: out)
+            if !entries.isEmpty {
+                await MainActor.run { self.onDataMemoryUpdated?(entries) }
+            }
+        }
+    }
+
+    /// Step 10: Read __TEXT section contents.
+    func readTextSection() async {
+        if let ts = await findTextSection(), ts.size > 0 {
+            let count = (ts.size + 7) / 8
+            let out = await send("memory read --format uint8_t[] --size 8 --count \(count) 0x\(String(ts.address, radix: 16))")
+            let entries = LLDBOutputParser.parseMemoryRead(from: out)
+            if !entries.isEmpty {
+                await MainActor.run { self.onTextMemoryUpdated?(entries) }
+            }
+        }
+    }
+
+    /// Convenience: run all launch steps automatically (Steps 1-5 + refreshState).
+    func launchAndBreakAtMain(breakpointLines: [Int] = [], sourceFile: String? = nil) async {
+        await waitForStartup()
+        await launchStopAtEntry()
+        await breakAtMain()
+        if let file = sourceFile {
+            await setUserBreakpoints(breakpointLines: breakpointLines, sourceFile: file)
+        }
+        await continueToBreakpoint()
         await refreshState()
     }
 
+    // =========================================================================
     // MARK: - Step Commands (auto-refresh after each)
+    // =========================================================================
 
     func stepInstruction() async {
         guard sessionState == .ready else { return }
@@ -196,14 +457,12 @@ final class LLDBController: ObservableObject {
         await MainActor.run {
             self.sessionState = .running
             self.inferiorNeedsInput = true
-            self.forwardToDisplay?("process continue\n")
         }
-        session?.send("process continue\n")
-        let response = await awaitPrompt()
-        await MainActor.run { self.forwardToDisplay?(response) }
+        await display("(lldb) process continue\n")
+        let response = await send("process continue", waitForStop: true)
+        await display(response)
         await handleStopResponse(response)
 
-        // Only refresh if we stopped (not if process exited)
         let currentState = await MainActor.run { self.sessionState }
         if currentState == .ready {
             await refreshState()
@@ -231,40 +490,50 @@ final class LLDBController: ObservableObject {
 
     /// Add a breakpoint at the specified file and line
     func addBreakpoint(file: String, line: Int) async {
-        _ = await sendAndAwait("breakpoint set --file \(file) --line \(line)")
+        let cmd = "breakpoint set --file \(file) --line \(line)"
+        await display("(lldb) \(cmd)\n")
+        let r = await send(cmd)
+        await display(r)
     }
 
     /// Remove breakpoint at the specified file and line
     func removeBreakpoint(file: String, line: Int) async {
-        // LLDB doesn't have a direct "delete by file:line", so we list and delete by ID
-        // For simplicity, we'll delete all breakpoints at that location
-        _ = await sendAndAwait("breakpoint list")
-        // Parse breakpoint IDs that match the file:line
-        // This is a simplified approach - in production you'd want more robust parsing
-        _ = await sendAndAwait("breakpoint delete --file \(file) --line \(line)")
+        let cmd = "breakpoint delete --file \(file) --line \(line)"
+        await display("(lldb) \(cmd)\n")
+        let r = await send(cmd)
+        await display(r)
     }
 
-    /// Send any raw LLDB command and return its response text (Tier-1, 5 s timeout).
+    /// Send a user-typed LLDB command. Returns the response text.
+    /// Does NOT echo to display — caller (AppState) manages the "(lldb) " prefix.
     func sendRawCommand(_ command: String) async -> String {
         guard sessionState == .ready else { return "" }
-        return await sendAndAwait(command)
+        return await send(command)
     }
 
-    // MARK: - Internal
+    // =========================================================================
+    // MARK: - Internal Helpers
+    // =========================================================================
 
     private func issueStepCommand(_ command: String) async {
-        await MainActor.run {
-            self.sessionState = .running
-            self.forwardToDisplay?(command + "\n")
-        }
-        session?.send(command + "\n")
-        let response = await awaitPrompt()
-        await MainActor.run { self.forwardToDisplay?(response) }
+        await MainActor.run { self.sessionState = .running }
+        await display("(lldb) \(command)\n")
+        let response = await send(command, waitForStop: true)
+        await display(response)
         await handleStopResponse(response)
-        await refreshState()
+        // Only refresh state if the process is still running (didn't exit during the step)
+        let currentState = await MainActor.run { self.sessionState }
+        if currentState == .ready {
+            await refreshState()
+        }
     }
 
     private func handleStopResponse(_ response: String) async {
+        // If the process exited, receiveOutput already set .terminated; don't override it.
+        guard LLDBOutputParser.detectProcessExit(in: response) == nil else {
+            await MainActor.run { self.inferiorNeedsInput = false }
+            return
+        }
         let reason = LLDBOutputParser.parseStopReason(from: response) ?? "stopped"
         await MainActor.run {
             self.lastStopReason = reason
@@ -273,157 +542,17 @@ final class LLDBController: ObservableObject {
         }
     }
 
-    // MARK: Output Buffering
+    // =========================================================================
+    // MARK: - Auto-Refresh After Stop (all silent — nothing echoed to console)
+    // =========================================================================
 
-    /// Called by LLDBSession.controllerOutputHandler on every chunk.
-    func receiveOutput(_ chunk: String) {
-        // Do NOT forward raw output here. User-visible forwarding is done explicitly
-        // in sendAndAwait (command echo) and in continueExecution/issueStepCommand
-        // (stop-reason response), keeping internal refresh commands off the console.
-        outputLock.lock()
-        outputBuffer += chunk
-        
-        if let code = LLDBOutputParser.detectProcessExit(in: outputBuffer) {
-            let buffer = outputBuffer
-            outputBuffer = ""
-            let continuations = promptContinuations
-            promptContinuations = []
-            outputLock.unlock()
-            
-            // Update state on main thread
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.sessionState = .terminated
-                self.inferiorNeedsInput = false
-                self.onProcessTerminated?(code)
-            }
-            
-            for continuation in continuations {
-                continuation.resume(returning: buffer)
-            }
-            return
-        }
-
-        while let range = outputBuffer.range(of: "(lldb) ") {
-            let response = String(outputBuffer[outputBuffer.startIndex..<range.lowerBound])
-            outputBuffer = String(outputBuffer[range.upperBound...])
-
-            if case .launching = sessionState {
-                DispatchQueue.main.async { [weak self] in
-                    self?.sessionState = .ready
-                }
-            }
-
-            if let continuation = promptContinuations.first {
-                promptContinuations.removeFirst()
-                continuation.resume(returning: response)
-            }
-        }
-        
-        outputLock.unlock()
-    }
-
-    // MARK: - Auto-Refresh After Stop
-
-    private func refreshState() async {
-        // 1. Register values (general purpose + special)
-        let regOut = await sendInternal("register read")
-        var values = LLDBOutputParser.parseRegisters(from: regOut)
-
-        // 2. Read FPSR explicitly (not in the default register read output)
-        let fpsrOut = await sendInternal("register read fpsr")
-        let fpsrValues = LLDBOutputParser.parseRegisters(from: fpsrOut)
-        values.merge(fpsrValues) { _, new in new }
-
-        if !values.isEmpty {
-            await MainActor.run { self.onRegistersUpdated?(values) }
-        }
-
-        // 3. Current frame / source line
-        let btOut = await sendInternal("bt 1")
-        if let frame = LLDBOutputParser.parseBacktrace(from: btOut, stopReason: lastStopReason) {
-            await MainActor.run { self.onFrameUpdated?(frame) }
-        }
-
-        // 4. Live stack contents (16 quadwords starting at $sp)
-        let memOut = await sendInternal("memory read --format uint8_t[] --size 8 --count 16 $sp")
-        let stackEntries = LLDBOutputParser.parseMemoryRead(from: memOut)
-        if !stackEntries.isEmpty {
-            await MainActor.run { self.onStackMemoryUpdated?(stackEntries) }
-        }
-
-        // 5. Data section contents (find dynamically and read; address is cached after first call)
-        if let dataSection = await findDataSection(), dataSection.size > 0 {
-            let count = (dataSection.size + 7) / 8
-            let dataMemOut = await sendInternal("memory read --format uint8_t[] --size 8 --count \(count) 0x\(String(dataSection.address, radix: 16))")
-            let dataEntries = LLDBOutputParser.parseMemoryRead(from: dataMemOut)
-            if !dataEntries.isEmpty {
-                await MainActor.run { self.onDataMemoryUpdated?(dataEntries) }
-            }
-        }
-        
-        // 6. Text section contents (find dynamically and read)
-        if let textSection = await findTextSection(), textSection.size > 0 {
-            // Calculate number of 8-byte chunks needed
-            let count = (textSection.size + 7) / 8  // Round up to nearest 8-byte boundary
-            let textMemOut = await sendAndAwait("memory read --format uint8_t[] --size 8 --count \(count) 0x\(String(textSection.address, radix: 16))")
-            let textEntries = LLDBOutputParser.parseMemoryRead(from: textMemOut)
-            
-            if !textEntries.isEmpty {
-                await MainActor.run {
-                    self.onTextMemoryUpdated?(textEntries)
-                }
-            }
-        }
-    }
-
-    // MARK: - Tier-1 sendAndAwait (5 s timeout, echoes to console)
-
-    private func sendAndAwait(_ command: String) async -> String {
-        // Echo command to display
-        await MainActor.run {
-            self.forwardToDisplay?(command + "\n")
-        }
-
-        session?.send(command + "\n")
-        let response = await withTaskGroup(of: String.self) { group in
-            group.addTask { await self.awaitPrompt() }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                return "[timeout:\(command)]"
-            }
-            let result = await group.next()!
-            group.cancelAll()
-            return result
-        }
-        return response
-    }
-
-    // MARK: - Internal command (no echo, no timeout — for refreshState only)
-
-    /// Send a command silently and wait indefinitely for the response.
-    /// Used for internal refresh commands (register read, bt, memory read, image dump)
-    /// so they never appear in the user's console and never leave dangling continuations.
-    private func sendInternal(_ command: String) async -> String {
-        session?.send(command + "\n")
-        return await awaitPrompt()
-    }
-
-    // MARK: - Await next (lldb) prompt (no timeout)
-
-    private func awaitPrompt() async -> String {
-        await withCheckedContinuation { continuation in
-            outputLock.lock()
-            defer { outputLock.unlock() }
-            
-            if let range = outputBuffer.range(of: "(lldb) ") {
-                let response = String(outputBuffer[outputBuffer.startIndex..<range.lowerBound])
-                outputBuffer = String(outputBuffer[range.upperBound...])
-                continuation.resume(returning: response)
-            } else {
-                promptContinuations.append(continuation)
-            }
-        }
+    /// Refresh all state panels: registers, backtrace, stack, __DATA, __TEXT.
+    func refreshState() async {
+        await readRegisters()
+        await readBacktrace()
+        await readStackMemory()
+        await readDataSection()
+        await readTextSection()
     }
 }
 

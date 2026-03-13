@@ -486,7 +486,7 @@ final class LineNumberTextView: NSTextView {
     }
 }
 
-#Preview {
+#Preview(traits: .sizeThatFitsLayout) {
     @Previewable @State var sampleCode = (1...100).map { "Line \($0)" }.joined(separator: "\n")
     @Previewable @StateObject var previewAppState = AppState()
 

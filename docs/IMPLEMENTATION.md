@@ -30,7 +30,7 @@
 │   │       ├── SegmentPanelView.swift     # VSplitView: __DATA (top) + __TEXT (bottom)
 │   │       ├── MemoryStripView.swift      # HSplitView: Registers + Stack + Heap (all visible)
 │   │       ├── BuildOutputView.swift      # Scrollable build/run output
-│   │       ├── LLDBDebuggerView.swift     # LLDB console + command input
+│   │       ├── LLDBDebuggerView.swift     # LLDB console + debug command panel + command input
 │   │       ├── ConsoleOutputView.swift    # Shared scrollable monospaced text view
 │   │       ├── TerminalPanelView.swift    # Terminal session output + input
 │   │       ├── MemoryHexDumpView.swift    # MemoryHexDumpHeader, LiveStackDumpContent
@@ -103,15 +103,43 @@ Manages compilation and execution via `Process`.
 
 ## LLDBSession (`ARM64Learn/Services/ProcessRunner.swift`)
 
-Owns the `lldb <binaryPath>` subprocess. Two output handlers:
-- `outputHandler` — forwarded to `AppState.lldbOutput` on the main queue (display)
-- `controllerOutputHandler` — forwarded to `LLDBController.receiveOutput` synchronously (parsing)
+Owns the `lldb <binaryPath>` subprocess. Output handlers:
+- `controllerOutputHandler` — forwarded to `LLDBController.receiveOutput` synchronously (parsing). This is the **only** output path; all display forwarding is managed by `LLDBController` via `forwardToDisplay` so internal refresh commands stay hidden from the user's console.
+- `outputHandler` — used only for the termination message (`[LLDB session ended]`).
 
 `send(_ text: String)` writes to the subprocess stdin pipe.
 
 ## LLDBController (`ARM64Learn/Services/LLDBController.swift`)
 
-Prompt-delimited command/response correlator sitting on top of `LLDBSession`.
+Sentinel-delimited command/response correlator sitting on top of `LLDBSession`.
+
+### Command execution architecture
+
+There is exactly **one** primitive for sending a command and getting its response:
+
+```swift
+private func send(_ command: String) async -> String
+```
+
+It registers a `CheckedContinuation` in the `promptContinuations` queue, sends the command text **and** a hidden `script print("LLDB_DONE_UUID")` sentinel to LLDB stdin, and awaits the continuation. No timeout, no display, no side effects. Every higher-level method composes on top of `send()`.
+
+Display forwarding is opt-in at each call site via `display(_ text:)`, which forwards to `forwardToDisplay` on the MainActor.
+
+#### Why UUID sentinels instead of `(lldb) ` prompt scanning
+
+Searching for `(lldb) ` to delimit responses is fragile: the string appears inside help text, stop notifications, and other output. A UUID that we generate cannot appear in legitimate command output, so `receiveOutput` can wait for `LLDB_DONE_UUID\n` unambiguously regardless of what the command outputs.
+
+#### LLDB output structure with sentinel
+
+```
+(lldb) COMMAND\n                      ← echo of real command
+<command output>
+(lldb) script print("LLDB_DONE_ID")\n ← echo of sentinel command
+LLDB_DONE_ID\n                        ← sentinel output  ← delimiter
+(lldb)                                ← bare prompt (may arrive in same chunk)
+```
+
+`receiveOutput` finds the sentinel, takes everything before it as the raw response, strips both echoes, and resumes the continuation.
 
 ### Session state machine (`DebuggerSessionState`)
 
@@ -120,34 +148,55 @@ idle → launching → ready ↔ running
                  → terminated / error
 ```
 
-- `launching`: LLDB process spawned; waiting for first `(lldb) ` prompt
-- `ready`: at a breakpoint/step; user can issue commands
+- `launching`: LLDB process spawned; `file` command not yet resolved
+- `ready`: `file` command (or any stop) resolved; user can issue commands
 - `running`: inferior executing after a step or continue command
 
 ### `inferiorNeedsInput: Bool`
-Published flag set **only** in `continueExecution()` (after the user explicitly presses Continue). Cleared by `handleStopResponse()`, `terminate()`, and the process-exit path. `LLDBDebuggerView` uses this — not `sessionState == .running` — to decide whether to show the program-stdin input row. This prevents the stdin row from appearing during the automated launch sequence or during step commands.
+Published flag set **only** in `continueExecution()` (after the user explicitly presses Continue). Cleared by `handleStopResponse()`, `terminate()`, and the process-exit path. `LLDBDebuggerView` uses this — not `sessionState == .running` — to decide whether to show the program-stdin input row.
 
-### `sendAndAwait(_ command: String) async -> String`
-User-facing send: echoes the command to the console display, sends it to LLDB, and races `awaitPrompt()` against a 5-second timeout. Used only for `sendRawCommand` (user-typed LLDB commands).
+### `PendingCommand` struct
+Holds the continuation, original `command` text, and `sentinelID` (UUID without hyphens). Computed properties:
+- `sentinelOutput` → `"LLDB_DONE_\(sentinelID)\n"` — the delimiter we wait for
+- `commandEcho` → `"(lldb) \(command)\n"` — stripped from response start
+- `sentinelCmdEcho` → `"(lldb) script print(\"LLDB_DONE_\(sentinelID)\")\n"` — stripped from response end
 
-### `sendInternal(_ command: String) async -> String`
-Silent internal send: no echo, no timeout. Used exclusively by `refreshState()` and `findDataSection()`. Responses from internal commands never appear in the user's console and never leave dangling continuations (no timeout fires).
+### `send(_ command: String) async -> String`
+The sole command execution primitive. Under `outputLock`: appends a `PendingCommand` with a fresh UUID, sends `command + "\n"` and `script print("LLDB_DONE_UUID")\n` to LLDB stdin, then releases the lock and awaits the continuation.
 
-### `awaitPrompt() async -> String`
-No-timeout await for the next `(lldb) ` prompt. Checks `outputBuffer` first; if a prompt is already present it returns immediately. Otherwise stores a `CheckedContinuation` in the `promptContinuations` FIFO queue. `receiveOutput` drains the queue in arrival order, so interleaved commands are always correlated correctly.
+### `display(_ text: String) async`
+Forwards text to the user-visible LLDB console via `forwardToDisplay` on the MainActor. Called explicitly by launch, step, continue, and breakpoint methods. NOT called by `refreshState` — so internal register/memory reads stay hidden.
+
+### `sendRawCommand(_ command: String) async -> String`
+For user-typed LLDB commands. Delegates to `send()`. Does NOT echo to display — the caller (`AppState.sendLLDBCommand`) manages the `(lldb) ` prompt prefix and response display.
 
 ### `receiveOutput(_ chunk: String)`
-Called synchronously by `LLDBSession.controllerOutputHandler` on the output-reader thread. Does **not** forward to display (that is done explicitly in `sendAndAwait`, `continueExecution`, and `issueStepCommand`). Locks `outputLock`, appends to `outputBuffer`, checks for process-exit signals, then drains all available `(lldb) ` prompts, resuming waiting continuations in FIFO order.
+Called by `LLDBSession.controllerOutputHandler` on the pipe's background reader thread. Appends to `outputBuffer`, checks for process-exit signals, then drains all sentinel-delimited responses with waiting continuations. For each pending command: searches `outputBuffer` for `sentinelOutput`; if not found, breaks (waits for more data); if found, extracts the raw response, advances the buffer past the sentinel, strips the bare `(lldb) ` prompt if it arrived in the same chunk, strips both echoes from the response, and enqueues the continuation for resumption. Continuations are resumed **after** `outputLock` is released to prevent re-entrancy deadlocks.
 
-### `refreshState()` — six phases after every stop
-All six phases use `sendInternal` (silent, no-echo, no-timeout) so no internal commands appear in the user's console.
+### Two delimiter modes — why `waitForStop` exists
 
-1. `register read` via `sendInternal` → `parseRegisters` → `onRegistersUpdated`
-2. `register read fpsr` via `sendInternal` → merged into register values
-3. `bt 1` via `sendInternal` → `parseBacktrace` → `onFrameUpdated`
-4. `memory read $sp --count 16 --size 8` via `sendInternal` → `parseMemoryRead` → `onStackMemoryUpdated`
-5. `findDataSection()` (cached) + `memory read <addr>` via `sendInternal` → `onDataMemoryUpdated`
-6. `findTextSection()` + `memory read <addr>` via `sendInternal` → `onTextMemoryUpdated`
+In sentinel mode (default), `send()` appends `script print("LLDB_DONE_UUID")` to the pipe immediately after the real command. LLDB processes both sequentially while in command mode, and the sentinel output is a reliable delimiter.
+
+However, while the inferior is **running** (after `continue`/step commands), LLDB reads bytes from its control pipe and echoes them verbatim to output without executing them. If the sentinel bytes are in the pipe when the inferior starts, they are consumed this way — `LLDB_DONE_UUID\n` never appears in output, and `send()` hangs forever.
+
+For commands that run the inferior, `send(_:waitForStop: true)` sends NO sentinel. Instead, `receiveOutput` waits for `") stopped.\n"` — the final token of every LLDB stop notification (`Target N: (binary) stopped.\n`). This pattern always appears exactly once at the end of the inferior's stop output and is not present in any normal command output.
+
+### Individual launch steps (public, called from debug command panel)
+
+| Method | LLDB Command | Description |
+|--------|-------------|-------------|
+| `waitForStartup()` | `settings set target.process.stdin /dev/null` + `file "<path>"` | Isolate inferior stdin, load binary, transition to `.ready` |
+| `launchStopAtEntry()` | `process launch --stop-at-entry` | Launch inferior, stop at dynamic linker |
+| `breakAtMain()` | `b main` | Set breakpoint at `_main` |
+| `setUserBreakpoints(...)` | `breakpoint set --file F --line N` | Set user-defined breakpoints |
+| `continueToBreakpoint()` | `continue` | Resume to first breakpoint |
+| `readRegisters()` | `register read` + `register read fpsr` | Populate register panel |
+| `readBacktrace()` | `bt 1` | Determine current frame/line |
+| `readStackMemory()` | `memory read $sp` | Read 16 quadwords from stack |
+| `readDataSection()` | `image dump sections` + `memory read` | Read __DATA segment |
+| `readTextSection()` | `image dump sections` + `memory read` | Read __TEXT segment |
+
+`launchAndBreakAtMain()` composes all launch steps + `refreshState()`. `refreshState()` composes all read steps. Both are available as "Run All" / "Refresh All" buttons.
 
 **Note**: Both `parseDataSection()` and `parseTextSection()` find all subsections within the segment and calculate the combined range from the first subsection to the last. This avoids displaying large zero-padded container regions.
 
@@ -155,8 +204,8 @@ All six phases use `sendInternal` (silent, no-echo, no-timeout) so no internal c
 
 **DATA subsections matched**: `data` (e.g., `__data`), `zero_fill` (e.g., `__bss`), `common` (e.g., `__common`)
 
-### `findDataSection()` — cached section lookup
-Issues `image dump sections <binary>` via `sendInternal` once, caches the result in `cachedDataSection`. Subsequent calls return the cached value immediately without any LLDB traffic. The address never changes within a debugging session.
+### `findDataSection()` / `findTextSection()` — cached section lookups
+Issue `image dump sections <binary>` via `send()` once, cache the result. Subsequent calls return the cached value immediately without any LLDB traffic. Section addresses never change within a debugging session.
 
 ### `LLDBOutputParser`
 Static enum with regex-based parsers:
@@ -195,6 +244,18 @@ The view's header bar contains the language label (`.s` / `.c`), `DebuggerContro
 - Normal: gray line number
 
 **Click handling:** `mouseDown(with:)` intercepts clicks where `point.x < gutterWidth`, converts the y-coordinate to a 1-based line number via `lineNumber(at:)`, and calls `onBreakpointToggle`.
+
+## LLDBDebuggerView (`Views/BottomPanel/LLDBDebuggerView.swift`)
+
+The LLDB tab view. When a debug session is active, displays a left sidebar (`DebugCommandPanel`, 200pt wide) alongside the `ConsoleOutputView`. Below: `LLDBCommandRow` or `ProgramInputRow` depending on `inferiorNeedsInput`.
+
+### `DebugCommandPanel`
+Left sidebar with ordered buttons for each debugger initialization step. Three sections:
+- **Launch Sequence**: Steps 1–4 (launch, break, user breakpoints, continue)
+- **Read State**: Steps a–e (registers, backtrace, stack, __DATA, __TEXT)
+- **Batch**: "Run All Launch Steps" and "Refresh All State"
+
+The launch steps are driven automatically by `launchAndBreakAtMain()` via the Run button. The individual public methods on `LLDBController` remain available for future use.
 
 ## RegisterPanelView (`Views/Registers/RegisterPanelView.swift`)
 

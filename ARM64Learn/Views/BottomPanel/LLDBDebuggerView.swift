@@ -7,14 +7,11 @@ struct LLDBDebuggerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Raw LLDB output
             ConsoleOutputView(text: appState.lldbOutput)
 
             Divider()
 
             // Input row: switches between LLDB command prompt and program stdin.
-            // Only show program stdin when the user explicitly continued execution
-            // (not during automated launch steps or step commands).
             if appState.lldbInferiorNeedsInput {
                 ProgramInputRow()
             } else {

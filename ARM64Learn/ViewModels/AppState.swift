@@ -237,9 +237,14 @@ class AppState: ObservableObject {
 
             controller.attach(to: session)
             await session.start()
+
+            // Expose the session and controller to the UI now so that state changes
+            // (launching → running → ready) are visible while the launch sequence runs.
             lldbSession = session
             lldbController = controller
 
+            // Run the full launch sequence: load binary, launch inferior, set breakpoints,
+            // continue to main, then refresh registers/memory panels.
             await controller.launchAndBreakAtMain(
                 breakpointLines: Array(activeBreakpoints),
                 sourceFile: debugSourceFile
@@ -333,7 +338,10 @@ class AppState: ObservableObject {
         guard !command.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         lldbInputHistory.append(command)
         lldbOutput += "(lldb) \(command)\n"
-        Task { await lldbController.sendRawCommand(command) }
+        Task {
+            let response = await lldbController.sendRawCommand(command)
+            lldbOutput += response
+        }
     }
 
     func sendProgramInput(_ text: String) {
