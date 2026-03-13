@@ -620,7 +620,7 @@ enum LLDBOutputParser {
     /// Example line: "  * frame #0: 0x100003f5c prog`_main + 4 at hello.s:12"
     static func parseBacktrace(from output: String, stopReason: String = "") -> ParsedFrame? {
         guard let regex = try? NSRegularExpression(
-            pattern: #"frame\s+#0:\s+(0x[0-9a-fA-F]+)\s+\S+`(\S+?)(?:\s+\+\s+\d+)?(?:\s+at\s+([^:]+):(\d+))?"#
+            pattern: #"frame\s+#0:\s+(0x[0-9a-fA-F]+)\s+\S+`(\S+)(?:\s+\+\s+\d+)?(?:\s+at\s+([^:]+):(\d+))?"#
         ) else { return nil }
 
         let ns = output as NSString
