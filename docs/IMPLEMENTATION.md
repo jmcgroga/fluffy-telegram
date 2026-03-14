@@ -13,7 +13,7 @@
 │   │   └── AppState.swift       # @MainActor ObservableObject; all state + actions
 │   ├── Models/
 │   │   ├── Tutorial.swift       # Tutorial, TutorialCategory, Difficulty
-│   │   └── MemoryState.swift    # MemoryState, MemorySegment, Register, StackFrame
+│   │   └── MemoryState.swift    # MemoryState, MemorySegment, Register, StackFrame, DisassemblyLine
 │   ├── Views/
 │   │   ├── Workspace/
 │   │   │   ├── MainWorkspaceView.swift    # Split layout: Tutorial | Editor | SegmentPanel / MemoryStrip
@@ -27,7 +27,8 @@
 │   │   └── BottomPanel/
 │   │       ├── BottomPanelView.swift      # Tabbed console (Build/Terminal/LLDB) + tab bar
 │   │       ├── OutputWindowView.swift     # Wrapper for BottomPanelView in output window
-│   │       ├── SegmentPanelView.swift     # VSplitView: __DATA (top) + __TEXT (bottom)
+│   │       ├── SegmentPanelView.swift     # VSplitView: __DATA (top) + Disassembly (bottom)
+│   │       ├── DisassemblyView.swift      # DisassemblyView, DisassemblyInstructionRow, DisassemblySourceMarkerRow
 │   │       ├── MemoryStripView.swift      # HSplitView: Registers + Stack + Heap (all visible)
 │   │       ├── BuildOutputView.swift      # Scrollable build/run output
 │   │       ├── LLDBDebuggerView.swift     # LLDB console + debug command panel + command input
@@ -71,18 +72,20 @@ The Xcode project uses a single `PBXFileSystemSynchronizedRootGroup` for `ARM64L
 | `lldbController` | `LLDBController` | Published so views can read `sessionState`, `lastStopReason`, `inferiorNeedsInput` |
 | `lldbInferiorNeedsInput` | `Bool` (computed) | `true` only when user continued execution and inferior may block on stdin |
 | `currentExecutionLine` | `Int?` | 1-based line number; drives gutter arrow and syntax storage |
+| `currentExecutionAddress` | `UInt64?` | PC address of current stop; drives `▶` in DisassemblyView |
 | `lastChangedRegisters` | `Set<String>` | Register names that changed on last step |
 | `lastRegisterChangeSummary` | `String` | Human-readable chip text, e.g. `"x0: 0x2A  ·  sp: 0x16F…"` |
 | `liveStackEntries` | `[(address: UInt64, value: UInt64)]` | 16 quadwords from `memory read $sp` |
 | `liveDataEntries` | `[(address: UInt64, value: UInt64)]` | Data section contents from `memory read` |
 | `liveTextEntries` | `[(address: UInt64, value: UInt64)]` | Text section contents from `memory read` |
+| `liveDisassembly` | `[DisassemblyLine]` | Decoded instructions from `disassemble -l --function _main` |
 | `activeBreakpoints` | `Set<Int>` | 1-based line numbers with active breakpoints |
 
 ### `applyRegisterUpdate(_ values: [String: UInt64])`
 Diffs incoming register values against `memoryState.registers`, sets `isChanged` flags, and rebuilds `lastRegisterChangeSummary`.
 
 ### `applyFrameUpdate(_ frame: ParsedFrame)`
-Sets `currentExecutionLine` and `currentExecutionFile` from the parsed backtrace frame, and updates `memoryState.stackFrames`.
+Sets `currentExecutionLine`, `currentExecutionFile`, and `currentExecutionAddress` from the parsed backtrace frame, and updates `memoryState.stackFrames`.
 
 ### `toggleBreakpoint(line:)`
 Adds/removes from `activeBreakpoints` and issues `breakpoint set --line N --file F` or `breakpoint clear --line N --file F` to `LLDBController.sendRawCommand`.
@@ -194,11 +197,9 @@ For commands that run the inferior, `send(_:waitForStop: true)` sends NO sentine
 | `readBacktrace()` | `bt 1` | Determine current frame/line |
 | `readStackMemory()` | `memory read $sp` | Read 16 quadwords from stack |
 | `readDataSection()` | `image dump sections` + `memory read` | Read __DATA segment |
-| `readTextSection()` | `image dump sections` + `memory read` | Read __TEXT segment |
+| `readDisassembly()` | `disassemble --frame` + `image lookup --address` per instruction | Decode current frame's instructions; enrich with source lines from DWARF |
 
-`launchAndBreakAtMain()` composes all launch steps + `refreshState()`. `refreshState()` composes all read steps. Both are available as "Run All" / "Refresh All" buttons.
-
-**Note**: Both `parseDataSection()` and `parseTextSection()` find all subsections within the segment and calculate the combined range from the first subsection to the last. This avoids displaying large zero-padded container regions.
+`launchAndBreakAtMain()` composes all launch steps + `refreshState()`. `refreshState()` composes all read steps (registers, backtrace, stack, data, disassembly).
 
 **TEXT subsections matched**: `code` (e.g., `__text`, `__stubs`), `compact_unwind`, `literal_pointers`, `cstring_literals`, `symbols`, `unwind_info`
 
@@ -216,9 +217,49 @@ Static enum with regex-based parsers:
 | `parseBacktrace(from:stopReason:)` | `bt 1` output | `ParsedFrame?` |
 | `parseStopReason(from:)` | stop block | `String?` |
 | `parseMemoryRead(from:)` | `memory read` output | `[(address: UInt64, value: UInt64)]` |
+| `parseDisassembly(from:)` | `disassemble --frame` output | `[DisassemblyLine]` with `sourceLine: nil` |
+| `parseImageLookupLine(from:)` | `image lookup --address` output | `Int?` source line from DWARF |
 | `detectProcessExit(in:)` | buffered output | `Int32?` exit code |
 | `parseDataSection(from:)` | `image dump sections` output | `(address: UInt64, size: UInt64)?` |
 | `parseTextSection(from:)` | `image dump sections` output | `(address: UInt64, size: UInt64)?` |
+
+### `onDisassemblyUpdated` callback
+`LLDBController` fires this callback with `[DisassemblyLine]` after each `readDisassembly()` call. Wired in `AppState.compileAndDebug()` to update `appState.liveDisassembly`.
+
+## DisassemblyLine (`ARM64Learn/Models/MemoryState.swift`)
+
+```swift
+struct DisassemblyLine: Identifiable {
+    let id: UUID
+    let address: UInt64   // absolute instruction address
+    let offset: Int       // byte offset from function start
+    let text: String      // mnemonic + operands
+    let sourceLine: Int?  // 1-based source line from most-recent ;; marker
+}
+```
+
+Populated by `LLDBOutputParser.parseDisassembly(from:)` and stored in `AppState.liveDisassembly`.
+
+## DisassemblyView (`Views/BottomPanel/DisassemblyView.swift`)
+
+Replaces the old `MemoryHexDumpView(__TEXT)` in `SegmentPanelView`.
+
+### Display items
+`[DisassemblyLine]` is flattened into a `[DisassemblyItem]` enum before rendering:
+- `.sourceMarker(id:sourceLine:)` — inserted whenever `sourceLine` changes between consecutive instructions
+- `.instruction(DisassemblyLine)` — one row per instruction
+
+### Sub-views
+| View | Role |
+|------|------|
+| `DisassemblyHeader` | Section header with `cpu.fill` icon |
+| `DisassemblyColumnHeader` | Sticky column labels: ADDRESS / OFFSET / INSTRUCTION |
+| `DisassemblyInstructionRow` | Fixed-width monospaced columns; `▶` + yellow background when `isCurrent` |
+| `DisassemblySourceMarkerRow` | Tertiary italic `;; line N` separator |
+| `DisassemblyEmptyView` | Shown before debugging starts |
+
+### Auto-scroll
+`ScrollViewReader` + `.onChange(of: appState.currentExecutionAddress)` scrolls to the current instruction's `id` with `withAnimation { proxy.scrollTo(..., anchor: .center) }`.
 
 ## CodeEditorView (`Views/Workspace/CodeEditorView.swift`)
 

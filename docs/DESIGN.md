@@ -62,9 +62,9 @@ Renders the selected tutorial's Markdown file. Read-only. Togglable via toolbar.
 - A red `●` breakpoint dot for lines in `activeBreakpoints`; clicking a gutter line toggles a breakpoint
 
 ### Segment Panel (Top, Right)
-A `VSplitView` containing two `MemoryHexDumpView` instances stacked vertically:
-- **Top**: `__DATA` hex dump — live data segment contents from LLDB
-- **Bottom**: `__TEXT` hex dump — live text (code) segment contents from LLDB
+A `VSplitView` containing two views stacked vertically:
+- **Top**: `MemoryHexDumpView(__DATA)` — live data segment hex dump from LLDB
+- **Bottom**: `DisassemblyView` — decoded ARM64 instructions for `_main`, with source-line markers and current-PC highlighting
 
 ### Output Window (Separate Window)
 A separate macOS window (`Window` scene with id `"output-window"`) displaying the tabbed console. Opens automatically on build or debug actions. Contains a tab bar with three tabs:

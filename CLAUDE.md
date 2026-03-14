@@ -70,6 +70,22 @@ All documentation lives in one of the following places. Follow these rules exact
 - **No external dependencies**: No SPM packages; uses only Apple frameworks
 - **Target**: macOS only (not iOS/iPadOS)
 
+## Formatting Memory Addresses
+
+**Always use `%016llX` (or `%llX`) when formatting `UInt64` memory addresses with `String(format:)`.**
+
+`%x` and `%X` are 32-bit format specifiers. Passing a `UInt64` to `%x` silently truncates the value to its lower 32 bits, producing wrong output with no compiler warning. For ARM64 macOS addresses like `0x100003f58`, the lower 32 bits are `0x00003f58` — completely wrong.
+
+```swift
+// WRONG — truncates UInt64 to lower 32 bits
+String(format: "0x%09x", address)   // 0x100003f58 → "0x000003f58"
+
+// CORRECT
+String(format: "%016llX", address)  // 0x100003f58 → "0000000100003f58"
+```
+
+Convention in this codebase: display addresses as **16 uppercase hex digits, no `0x` prefix** — consistent with `MemoryHexDumpView` and `HexDumpComponents`.
+
 ## Adding Tutorials
 
 1. Create a new `.md` file in `ARM64Learn/Resources/Tutorials/` following the `NN_slug.md` naming convention.

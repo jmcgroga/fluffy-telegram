@@ -122,6 +122,8 @@ class AppState: ObservableObject {
     // Debugger execution state
     @Published var currentExecutionLine: Int? = nil
     @Published var currentExecutionFile: String? = nil
+    @Published var currentExecutionAddress: UInt64? = nil
+    @Published var liveDisassembly: [DisassemblyLine] = []
     @Published var debugSourceFile: String? = nil  // Track the actual debug source file name
     @Published var lastChangedRegisters: Set<String> = []
     @Published var lastRegisterChangeSummary: String = ""
@@ -194,6 +196,8 @@ class AppState: ObservableObject {
             // Reset debugger state
             currentExecutionLine = nil
             currentExecutionFile = nil
+            currentExecutionAddress = nil
+            liveDisassembly = []
             debugSourceFile = "source_debug.\(codeLanguage.fileExtension)"  // Track the debug source file
             lastChangedRegisters = []
             lastRegisterChangeSummary = ""
@@ -220,6 +224,8 @@ class AppState: ObservableObject {
             }
             controller.onProcessTerminated = { [weak self] _ in
                 self?.currentExecutionLine = nil
+                self?.currentExecutionAddress = nil
+                self?.liveDisassembly = []
                 self?.liveStackEntries = []
                 self?.liveDataEntries = []
                 self?.liveTextEntries = []
@@ -233,6 +239,9 @@ class AppState: ObservableObject {
             }
             controller.onTextMemoryUpdated = { [weak self] entries in
                 self?.liveTextEntries = entries
+            }
+            controller.onDisassemblyUpdated = { [weak self] lines in
+                self?.liveDisassembly = lines
             }
 
             controller.attach(to: session)
@@ -272,6 +281,7 @@ class AppState: ObservableObject {
     func applyFrameUpdate(_ frame: ParsedFrame) {
         currentExecutionLine = frame.sourceLine
         currentExecutionFile = frame.sourceFile
+        currentExecutionAddress = frame.address
         memoryState.stackFrames = [StackFrame(
             functionName: frame.symbol,
             returnAddress: frame.address,
@@ -311,6 +321,8 @@ class AppState: ObservableObject {
         lldbController.terminate()
         lldbSession = nil
         currentExecutionLine = nil
+        currentExecutionAddress = nil
+        liveDisassembly = []
     }
 
     // MARK: - Breakpoints

@@ -80,6 +80,7 @@ final class LLDBController: ObservableObject {
     var onStackMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
     var onDataMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
     var onTextMemoryUpdated: (( [(address: UInt64, value: UInt64)] ) -> Void)?
+    var onDisassemblyUpdated: (([DisassemblyLine]) -> Void)?
     /// Raw output forwarded to the console display (unchanged). Called on MainActor.
     var forwardToDisplay: ((String) -> Void)?
 
@@ -123,11 +124,21 @@ final class LLDBController: ObservableObject {
     private var cachedDataSection: (address: UInt64, size: UInt64)? = nil
     private var cachedTextSection: (address: UInt64, size: UInt64)? = nil
 
+    // Cache disassembly lines keyed by the base address of the disassembled function.
+    // Source-line enrichment (image lookup per instruction) is expensive, so we only
+    // run it once per function and reuse the result on subsequent steps.
+    private var cachedDisassemblyBase: UInt64? = nil
+    private var cachedDisassemblyLines: [DisassemblyLine] = []
+
     // MARK: - Attach
 
     func attach(to session: LLDBSession) {
         self.session = session
         sessionState = .launching
+        cachedDataSection = nil
+        cachedTextSection = nil
+        cachedDisassemblyBase = nil
+        cachedDisassemblyLines = []
         session.controllerOutputHandler = { [weak self] chunk in
             self?.receiveOutput(chunk)
         }
@@ -416,6 +427,57 @@ final class LLDBController: ObservableObject {
         }
     }
 
+    /// Step 11: Disassemble the current frame's function.
+    ///
+    /// Uses `disassemble --frame` (always works; no source-file dependency).
+    /// Source line numbers are read from the DWARF debug info embedded in the
+    /// binary via `image lookup --address`, which works even after the `.s`
+    /// file has been moved or deleted.
+    ///
+    /// The enriched result is cached by function base address so the per-
+    /// instruction `image lookup` calls only happen once per function — not
+    /// on every step.
+    func readDisassembly() async {
+        let output = await send("disassemble --frame")
+        let rawLines = LLDBOutputParser.parseDisassembly(from: output)
+        guard !rawLines.isEmpty else { return }
+
+        let baseAddr = rawLines[0].address
+
+        // Reuse cache if we're still in the same function.
+        if baseAddr == cachedDisassemblyBase {
+            let cached = cachedDisassemblyLines
+            await MainActor.run { self.onDisassemblyUpdated?(cached) }
+            return
+        }
+
+        // New function — enrich each instruction with its source line from DWARF.
+        let enriched = await enrichWithSourceLines(rawLines)
+        cachedDisassemblyBase = baseAddr
+        cachedDisassemblyLines = enriched
+        await MainActor.run { self.onDisassemblyUpdated?(enriched) }
+    }
+
+    /// For each disassembly line, issue `image lookup --address` to retrieve
+    /// the source line number from the embedded DWARF debug info.
+    /// Lines that have no debug info carry the last known source line forward.
+    private func enrichWithSourceLines(_ lines: [DisassemblyLine]) async -> [DisassemblyLine] {
+        var result: [DisassemblyLine] = []
+        var lastSourceLine: Int? = nil
+        for line in lines {
+            let out = await send("image lookup --address 0x\(String(line.address, radix: 16))")
+            let sl = LLDBOutputParser.parseImageLookupLine(from: out)
+            if sl != nil { lastSourceLine = sl }
+            result.append(DisassemblyLine(
+                address: line.address,
+                offset:  line.offset,
+                text:    line.text,
+                sourceLine: sl ?? lastSourceLine
+            ))
+        }
+        return result
+    }
+
     /// Convenience: run all launch steps automatically (Steps 1-5 + refreshState).
     func launchAndBreakAtMain(breakpointLines: [Int] = [], sourceFile: String? = nil) async {
         await waitForStartup()
@@ -546,13 +608,13 @@ final class LLDBController: ObservableObject {
     // MARK: - Auto-Refresh After Stop (all silent — nothing echoed to console)
     // =========================================================================
 
-    /// Refresh all state panels: registers, backtrace, stack, __DATA, __TEXT.
+    /// Refresh all state panels: registers, backtrace, stack, __DATA, disassembly.
     func refreshState() async {
         await readRegisters()
         await readBacktrace()
         await readStackMemory()
         await readDataSection()
-        await readTextSection()
+        await readDisassembly()
     }
 }
 
@@ -765,8 +827,73 @@ enum LLDBOutputParser {
         return (minStart, size)
     }
     
+    // MARK: disassembly
+
+    /// Parse `disassemble --frame` output into raw DisassemblyLine values.
+    ///
+    /// LLDB output format (source lines are populated later via `image lookup`):
+    /// ```
+    /// source_debug`_main:
+    ///     0x100003f58 <+0>:  stp    x29, x30, [sp, #-16]!
+    /// ->  0x100003f5c <+4>:  mov    x29, sp
+    ///     0x100003f60 <+8>:  adrp   x0, 1
+    /// ```
+    /// The `->` current-PC marker is ignored; highlighting is driven by
+    /// `currentExecutionAddress` in the view layer.
+    static func parseDisassembly(from output: String) -> [DisassemblyLine] {
+        var result: [DisassemblyLine] = []
+
+        // Matches: "    0x100003f58 <+0>:  stp ..." or "->  0x100003f5c <+4>:  mov ..."
+        guard let instrPattern = try? NSRegularExpression(
+            pattern: #"^(?:->\s+|\s+)(0x[0-9a-fA-F]+)\s+<\+(\d+)>:\s+(.+?)\s*$"#,
+            options: .anchorsMatchLines
+        ) else { return result }
+
+        for line in output.components(separatedBy: "\n") {
+            let ns = line as NSString
+            let range = NSRange(location: 0, length: ns.length)
+            guard let match = instrPattern.firstMatch(in: line, range: range),
+                  match.numberOfRanges == 4,
+                  match.range(at: 1).location != NSNotFound,
+                  match.range(at: 2).location != NSNotFound,
+                  match.range(at: 3).location != NSNotFound else { continue }
+
+            let addrStr   = ns.substring(with: match.range(at: 1))
+            let offsetStr = ns.substring(with: match.range(at: 2))
+            let text      = ns.substring(with: match.range(at: 3))
+
+            guard let address = UInt64(addrStr.dropFirst(2), radix: 16),
+                  let offset  = Int(offsetStr) else { continue }
+
+            result.append(DisassemblyLine(address: address, offset: offset, text: text, sourceLine: nil))
+        }
+        return result
+    }
+
+    // MARK: image lookup source line
+
+    /// Parse `image lookup --address 0x...` output for the source line number.
+    ///
+    /// LLDB writes a Summary line like:
+    /// ```
+    ///   Summary: source_debug`_main + 8 at source_debug.s:7:3
+    /// ```
+    /// Source line is extracted from the `:LINE` before the column suffix.
+    /// Works from DWARF debug info embedded in the binary — the source file
+    /// does not need to be present on disk.
+    static func parseImageLookupLine(from output: String) -> Int? {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"\bat\s+\S+\.(?:s|c|cpp|m):(\d+)"#
+        ) else { return nil }
+        let ns = output as NSString
+        guard let match = regex.firstMatch(
+            in: output, range: NSRange(location: 0, length: ns.length)
+        ), match.numberOfRanges == 2 else { return nil }
+        return Int(ns.substring(with: match.range(at: 1)))
+    }
+
     // MARK: text section
-    
+
     /// Parse "image dump sections" output to find all subsections within __TEXT container
     /// Example lines:
     ///   "0x00000001 code                   [0x0000000100000458-0x0000000100000478)  r-x  ... output_debug.__TEXT.__text"

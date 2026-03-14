@@ -197,3 +197,13 @@ struct StackFrame: Identifiable {
     var savedRegisters: [(name: String, value: UInt64)]
     var localVariables: [(name: String, size: Int, value: String)]
 }
+
+// MARK: - Disassembly Line
+
+struct DisassemblyLine: Identifiable {
+    let id = UUID()
+    let address: UInt64       // e.g. 0x100003f5c
+    let offset: Int           // byte offset within function, e.g. 4
+    let text: String          // mnemonic + operands, e.g. "mov    x0, #1"
+    let sourceLine: Int?      // 1-based source line from ;; marker (nil if no marker precedes)
+}

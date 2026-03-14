@@ -4,6 +4,61 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-13 — Fix disassembly view showing no data; add source-line lookup via DWARF
+
+### Bug: disassembly view empty after program starts
+
+The original command `disassemble -l --function _main` used two wrong flags:
+- `-l` in LLDB is `--line` (expects a line number argument), not source-interleaving
+- `--function` is not a valid `disassemble` option; the correct form is `--name`
+
+So LLDB received a malformed command and returned an error instead of instructions.
+
+**Fix**: Changed to `disassemble --frame` which always works — it disassembles the current
+frame's function regardless of symbol name, requires no source file, and never needs `-l`.
+
+### Feature: source line numbers from DWARF (no source file required)
+
+Source line markers from `disassemble --mixed` require the `.s` file to be accessible on disk.
+Instead, we now use `image lookup --address <addr>` per instruction, which reads the source
+line from the DWARF line-table embedded in the binary. This works after the source file has
+been moved or deleted (e.g. the temp file in `/var/folders/...`).
+
+`LLDBOutputParser.parseImageLookupLine(from:)` extracts the line number from the
+`Summary: ..._main + N at source_debug.s:LINE:COL` summary text.
+
+Results are cached by function base address in `LLDBController` so the N per-instruction
+lookups only run once per function — subsequent steps within the same function reuse the cache.
+
+---
+
+## 2026-03-13 — Disassembly view with source-line markers and PC highlighting
+
+Replaced the raw `__TEXT` hex dump in `SegmentPanelView` with a new `DisassemblyView` that shows decoded ARM64 instructions alongside source-line markers and a live `▶` current-PC indicator.
+
+### New: `DisassemblyLine` model (`MemoryState.swift`)
+`DisassemblyLine` stores `address`, `offset`, `text`, and `sourceLine` (from LLDB's `;; file:N` markers).
+
+### New: `DisassemblyView` (`Views/BottomPanel/DisassemblyView.swift`)
+- Renders instructions in fixed-width monospaced columns (address / offset / instruction)
+- Inserts italic `;; line N` source-marker separators when the source line changes
+- Highlights the current PC row with `▶` indicator and yellow background (`0.18` opacity)
+- Auto-scrolls to keep the current instruction visible via `ScrollViewReader` + `.onChange`
+- Shows an empty state ("Start debugging to view disassembly") before a session starts
+
+### New: `LLDBController.readDisassembly()` + `LLDBOutputParser.parseDisassembly(from:)`
+Issues `disassemble --frame` after each stop. Parses instruction lines to produce raw `[DisassemblyLine]`. Then issues `image lookup --address` per instruction to read source line numbers from embedded DWARF debug info (works without the source file on disk). Results are cached by function base address so the per-instruction lookups only happen once per function. Fires via `onDisassemblyUpdated` callback.
+
+### Updated: `AppState`
+- New `@Published var currentExecutionAddress: UInt64?` — set from `ParsedFrame.address` on each stop; cleared on terminate/reset
+- New `@Published var liveDisassembly: [DisassemblyLine]` — populated by `onDisassemblyUpdated` callback; cleared on terminate/reset
+- `applyFrameUpdate` now also sets `currentExecutionAddress`
+
+### Updated: `SegmentPanelView`
+Bottom panel is now `DisassemblyView()` instead of `MemoryHexDumpView("__TEXT")`.
+
+---
+
 ## 2026-03-13 — Fix debugging controls not working; fix step hang on process exit
 
 ### Bug: debugging controls non-functional after starting a session
