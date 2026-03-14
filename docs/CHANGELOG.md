@@ -4,6 +4,18 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-14 — Move debugger controls to toolbar; separate Run and Debug buttons
+
+### Changed
+- **`DebuggerControlBar`** (`LLDBDebuggerView.swift`): Replaced the single "Run/Continue" button with two distinct buttons:
+  - **Run** (blue, `play.fill`): builds and runs without a debugger session (`compileCode()`). Disabled when a debug session is already active.
+  - **Debug/Cont** (green, `ant.fill` / `forward.fill`): starts a debug session (`compileAndDebug()`) when no session exists; acts as Continue (`continueExecution()`) when a session is paused. Label and icon switch dynamically between "Debug" and "Cont".
+  - Both buttons open the output window automatically via `@Environment(\.openWindow)`.
+- **`WorkspaceToolbar`** (`WorkspaceToolbar.swift`): Replaced the standalone "Build & Run" and "Debug" buttons with `DebuggerControlBar()`, consolidating all execution controls in one place.
+- **`CodeEditorView`** (`CodeEditorView.swift`): Removed `DebuggerControlBar()` from the editor header. The header now shows only the language label and quick-action buttons (reset, copy).
+
+---
+
 ## 2026-03-13 — Restore __TEXT hex dump, highlight current instruction bytes, assembly hover tooltip
 
 ### Feature: __TEXT hex dump restored in SegmentPanel

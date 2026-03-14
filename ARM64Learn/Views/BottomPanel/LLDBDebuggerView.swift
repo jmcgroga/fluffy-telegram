@@ -25,6 +25,7 @@ struct LLDBDebuggerView: View {
 
 struct DebuggerControlBar: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.openWindow) private var openWindow
 
     private var state: DebuggerSessionState { appState.debuggerState }
     private var isPaused:  Bool { appState.lldbIsPaused }
@@ -38,11 +39,25 @@ struct DebuggerControlBar: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            // Run / Continue
-            StepButton(label: "Run", icon: "play.fill", tint: .green,
-                       enabled: !hasSession || isPaused) {
-                if !hasSession { Task { await appState.compileAndDebug() } }
-                else           { appState.continueExecution() }
+            // Run without debugging
+            StepButton(label: "Run", icon: "play.fill", tint: .blue,
+                       enabled: !hasSession && !appState.isCompiling) {
+                openWindow(id: "output-window")
+                Task { await appState.compileCode() }
+            }
+            .help("Build and run without debugging")
+
+            // Debug (start session) / Continue (when paused)
+            StepButton(label: hasSession ? "Cont" : "Debug",
+                       icon: hasSession ? "forward.fill" : "ant.fill",
+                       tint: .green,
+                       enabled: (!hasSession && !appState.isCompiling) || isPaused) {
+                if !hasSession {
+                    openWindow(id: "output-window")
+                    Task { await appState.compileAndDebug() }
+                } else {
+                    appState.continueExecution()
+                }
             }
             .help(!hasSession ? "Build with debug symbols and run" : "Continue (c)")
 

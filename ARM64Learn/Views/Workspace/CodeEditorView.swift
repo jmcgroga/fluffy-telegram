@@ -24,11 +24,6 @@ struct CodeEditorView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Divider().frame(height: 22)
-
-                // Debugger controls inline
-                DebuggerControlBar()
-
                 Spacer()
 
                 // Quick actions

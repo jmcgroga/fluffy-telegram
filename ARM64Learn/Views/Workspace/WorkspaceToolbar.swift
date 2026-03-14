@@ -53,26 +53,7 @@ struct WorkspaceToolbar: View {
 
             Divider().frame(height: 20)
 
-            // Build buttons
-            Button {
-                openWindow(id: "output-window")
-                Task { await appState.compileCode() }
-            } label: {
-                Label("Build & Run", systemImage: "play.fill")
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
-            .disabled(appState.isCompiling)
-            .keyboardShortcut("b", modifiers: .command)
-
-            Button {
-                openWindow(id: "output-window")
-                Task { await appState.compileAndDebug() }
-            } label: {
-                Label("Debug", systemImage: "ant.fill")
-            }
-            .buttonStyle(.bordered)
-            .disabled(appState.isCompiling)
+            DebuggerControlBar()
 
             Divider().frame(height: 20)
 
