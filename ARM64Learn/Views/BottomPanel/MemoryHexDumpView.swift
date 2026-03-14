@@ -27,7 +27,10 @@ struct MemoryHexDumpView: View {
                 } else if segmentName == "__DATA", !appState.liveDataEntries.isEmpty {
                     LiveStackDumpContent(entries: appState.liveDataEntries)
                 } else if segmentName == "__TEXT", !appState.liveTextEntries.isEmpty {
-                    LiveStackDumpContent(entries: appState.liveTextEntries)
+                    LiveStackDumpContent(
+                        entries: appState.liveTextEntries,
+                        highlightAddress: appState.currentExecutionAddress
+                    )
                 } else if segment != nil {
                     HexDumpContent()
                 } else {
@@ -94,9 +97,12 @@ extension MemorySegment {
 
 /// Displays live memory contents read from LLDB (`memory read`).
 /// Shows each 8-byte quadword as a complete 64-bit value.
+/// When `highlightAddress` is set, the 4-byte ARM64 instruction at that address
+/// is highlighted within its containing 8-byte quadword row.
 struct LiveStackDumpContent: View {
     let entries: [(address: UInt64, value: UInt64)]
-    
+    var highlightAddress: UInt64? = nil
+
     private var segmentName: String {
         // Determine segment name based on address range
         guard let firstAddress = entries.first?.address else { return "memory" }
@@ -110,11 +116,25 @@ struct LiveStackDumpContent: View {
         }
     }
 
+    /// ARM64 instructions are always 4 bytes and 4-byte aligned.
+    /// Returns the byte range [0-3] or [4-7] within the 8-byte quadword that
+    /// contains the instruction at `highlightAddress`, or nil if not in this row.
+    private func highlightByteRange(for quadwordAddr: UInt64) -> Range<Int>? {
+        guard let pc = highlightAddress else { return nil }
+        guard (pc & ~UInt64(7)) == quadwordAddr else { return nil }
+        let byteOffset = Int(pc & 7)   // 0 or 4 for 4-byte-aligned ARM64
+        return byteOffset..<(byteOffset + 4)
+    }
+
     var body: some View {
         LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
             Section {
                 ForEach(Array(entries.enumerated()), id: \.offset) { idx, entry in
-                    StackQuadwordRow(address: entry.address, value: entry.value)
+                    StackQuadwordRow(
+                        address: entry.address,
+                        value: entry.value,
+                        highlightByteRange: highlightByteRange(for: entry.address)
+                    )
                     if idx < entries.count - 1 {
                         Divider().padding(.leading, 130)
                     }
@@ -146,19 +166,21 @@ struct LiveStackDumpContent: View {
 struct StackQuadwordRow: View {
     let address: UInt64
     let value: UInt64
-    
+    /// Optional byte range [0-7] within this quadword to highlight (e.g. a 4-byte ARM64 instruction).
+    var highlightByteRange: Range<Int>? = nil
+
     // Convert 64-bit value to little-endian bytes
     private var bytes: [UInt8] {
         (0..<8).map { i in UInt8((value >> (i * 8)) & 0xFF) }
     }
-    
+
     // ASCII representation (printable chars only)
     private var asciiString: String {
         bytes.map { byte in
             (32...126).contains(byte) ? String(UnicodeScalar(byte)) : "."
         }.joined()
     }
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Address (16 hex digits, no 0x prefix)
@@ -166,18 +188,31 @@ struct StackQuadwordRow: View {
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(width: 140, alignment: .leading)
-            
-            // Hex bytes (8 bytes, little-endian)
-            Text(bytes.map { String(format: "%02x", $0) }.joined(separator: " "))
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
-                .foregroundStyle(.primary)
-                .frame(width: 180, alignment: .leading)
-            
+
+            // Hex bytes — per-byte Text views so individual bytes can be highlighted
+            HStack(spacing: 4) {
+                ForEach(0..<8, id: \.self) { i in
+                    let highlighted = highlightByteRange?.contains(i) == true
+                    Text(String(format: "%02x", bytes[i]))
+                        .font(.system(size: 11,
+                                      weight: highlighted ? .semibold : .regular,
+                                      design: .monospaced))
+                        .foregroundStyle(highlighted ? Color.orange : Color.primary)
+                        .padding(.horizontal, 1)
+                        .background(
+                            highlighted ? Color.orange.opacity(0.18) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 2)
+                        )
+                }
+                Spacer()
+            }
+            .frame(width: 180, alignment: .leading)
+
             // ASCII representation
             Text(asciiString)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
-            
+
             Spacer()
         }
         .padding(.horizontal, 12)

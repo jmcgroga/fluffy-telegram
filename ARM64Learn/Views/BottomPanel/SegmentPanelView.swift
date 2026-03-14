@@ -7,10 +7,13 @@ struct SegmentPanelView: View {
     var body: some View {
         VSplitView {
             MemoryHexDumpView(segmentName: "__DATA")
-                .frame(minHeight: 80)
+                .frame(minHeight: 60)
+
+            MemoryHexDumpView(segmentName: "__TEXT")
+                .frame(minHeight: 60)
 
             DisassemblyView()
-                .frame(minHeight: 80)
+                .frame(minHeight: 60)
         }
     }
 }

@@ -608,12 +608,13 @@ final class LLDBController: ObservableObject {
     // MARK: - Auto-Refresh After Stop (all silent — nothing echoed to console)
     // =========================================================================
 
-    /// Refresh all state panels: registers, backtrace, stack, __DATA, disassembly.
+    /// Refresh all state panels: registers, backtrace, stack, __DATA, __TEXT, disassembly.
     func refreshState() async {
         await readRegisters()
         await readBacktrace()
         await readStackMemory()
         await readDataSection()
+        await readTextSection()
         await readDisassembly()
     }
 }

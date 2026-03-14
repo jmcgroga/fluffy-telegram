@@ -62,7 +62,9 @@ struct CodeEditorView: View {
                 language: appState.codeLanguage,
                 executionLine: appState.currentExecutionLine,
                 breakpoints: appState.activeBreakpoints,
-                onBreakpointToggle: { line in appState.toggleBreakpoint(line: line) }
+                onBreakpointToggle: { line in appState.toggleBreakpoint(line: line) },
+                disassembly: appState.liveDisassembly,
+                textEntries: appState.liveTextEntries
             )
         }
         .background(.windowBackground)
@@ -82,6 +84,8 @@ struct SyntaxTextEditor: NSViewRepresentable {
     var executionLine: Int? = nil
     var breakpoints: Set<Int> = []
     var onBreakpointToggle: ((Int) -> Void)? = nil
+    var disassembly: [DisassemblyLine] = []
+    var textEntries: [(address: UInt64, value: UInt64)] = []
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -189,6 +193,10 @@ struct SyntaxTextEditor: NSViewRepresentable {
             textView.setNeedsDisplay(textView.bounds)
         }
         textView.onBreakpointToggle = onBreakpointToggle
+
+        // Sync disassembly data for hover tooltips
+        textView.disassembly = disassembly
+        textView.textEntries = textEntries
     }
 
     private func scrollToLine(_ line: Int, in textView: NSTextView) {
@@ -260,6 +268,10 @@ final class LineNumberTextView: NSTextView {
     var executionLine: Int? = nil
     var breakpoints: Set<Int> = []
     var onBreakpointToggle: ((Int) -> Void)? = nil
+    var disassembly: [DisassemblyLine] = []
+    var textEntries: [(address: UInt64, value: UInt64)] = []
+
+    private var hoverTrackingArea: NSTrackingArea?
 
     private let gutterAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .regular),
@@ -299,6 +311,67 @@ final class LineNumberTextView: NSTextView {
         super.didChangeText()
         // Trigger a redraw of the line numbers
         setNeedsDisplay(bounds)
+    }
+
+    // MARK: - Hover tracking area
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let old = hoverTrackingArea {
+            removeTrackingArea(old)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        let point = convert(event.locationInWindow, from: nil)
+        guard point.x >= LineNumberTextView.gutterWidth, !disassembly.isEmpty else {
+            toolTip = nil
+            return
+        }
+        guard let line = lineNumber(at: point) else {
+            toolTip = nil
+            return
+        }
+        let matching = disassembly.filter { $0.sourceLine == line }
+        guard !matching.isEmpty else {
+            toolTip = nil
+            return
+        }
+        toolTip = buildTooltip(for: matching)
+    }
+
+    private func buildTooltip(for lines: [DisassemblyLine]) -> String {
+        lines.map { line in
+            var parts = [line.text]
+            let bytes = extractInstructionBytes(at: line.address)
+            if !bytes.isEmpty {
+                let hex = bytes.map { String(format: "%02X", $0) }.joined(separator: " ")
+                parts.append("Machine code: \(hex)")
+            }
+            let mnemonic = line.text.components(separatedBy: .whitespaces).first?.lowercased() ?? ""
+            if let desc = arm64MnemonicDescriptions[mnemonic] {
+                parts.append(desc)
+            }
+            return parts.joined(separator: "\n")
+        }.joined(separator: "\n\n")
+    }
+
+    /// Extract the 4 bytes of an ARM64 instruction at `address` from the live __TEXT entries.
+    /// Each entry is an 8-byte little-endian quadword; the instruction occupies bytes [0-3] or [4-7].
+    private func extractInstructionBytes(at address: UInt64) -> [UInt8] {
+        let quadwordAddr = address & ~UInt64(7)
+        guard let entry = textEntries.first(where: { $0.address == quadwordAddr }) else { return [] }
+        let byteOffset = Int(address & 7)  // 0 or 4 for 4-byte-aligned ARM64
+        return (0..<4).map { i in UInt8((entry.value >> ((byteOffset + i) * 8)) & 0xFF) }
     }
 
     // MARK: - Mouse handling for breakpoint gutter clicks
@@ -347,6 +420,111 @@ final class LineNumberTextView: NSTextView {
         }
         return nil
     }
+
+    // MARK: - ARM64 mnemonic descriptions (used by hover tooltip)
+
+    // swiftlint:disable:next identifier_name
+    private let arm64MnemonicDescriptions: [String: String] = [
+        "stp":   "Store Pair — saves two registers to memory",
+        "ldp":   "Load Pair — loads two registers from memory",
+        "str":   "Store Register — writes a register to memory",
+        "strb":  "Store Register Byte — writes the low 8 bits to memory",
+        "strh":  "Store Register Halfword — writes the low 16 bits to memory",
+        "ldr":   "Load Register — reads a value from memory into a register",
+        "ldrb":  "Load Register Byte — reads 8 bits from memory, zero-extends to 64",
+        "ldrh":  "Load Register Halfword — reads 16 bits from memory, zero-extends to 64",
+        "ldrsb": "Load Register Signed Byte — reads 8 bits from memory, sign-extends to 64",
+        "ldrsh": "Load Register Signed Halfword — reads 16 bits from memory, sign-extends to 64",
+        "ldrsw": "Load Register Signed Word — reads 32 bits from memory, sign-extends to 64",
+        "mov":   "Move — copies a value between registers or loads an immediate",
+        "movz":  "Move with Zero — loads a 16-bit immediate, zeroing all other bits",
+        "movk":  "Move with Keep — inserts a 16-bit immediate without affecting other bits",
+        "movn":  "Move with NOT — loads the bitwise inverse of a 16-bit immediate",
+        "add":   "Add — adds two registers or a register and immediate",
+        "adds":  "Add setting flags — like ADD but updates N, Z, C, V flags",
+        "sub":   "Subtract — subtracts a register or immediate from a register",
+        "subs":  "Subtract setting flags — like SUB but updates N, Z, C, V flags",
+        "mul":   "Multiply — multiplies two registers (low 64 bits of result)",
+        "madd":  "Multiply-Add — result = Rm * Rn + Ra",
+        "msub":  "Multiply-Subtract — result = Ra - Rm * Rn",
+        "mneg":  "Multiply-Negate — result = -(Rm * Rn)",
+        "sdiv":  "Signed Divide — divides one register by another (signed, truncates toward zero)",
+        "udiv":  "Unsigned Divide — divides one register by another (unsigned, truncates toward zero)",
+        "and":   "Bitwise AND — computes the AND of two registers",
+        "ands":  "Bitwise AND setting flags — like AND but updates N and Z flags",
+        "orr":   "Bitwise OR — computes the OR of two registers or a register and immediate",
+        "orn":   "Bitwise OR NOT — computes OR of a register with the bitwise inverse of another",
+        "eor":   "Bitwise XOR — computes the exclusive OR of two registers",
+        "eon":   "Bitwise XOR NOT — computes XOR with the bitwise inverse",
+        "bic":   "Bit Clear — ANDs a register with the complement of another",
+        "lsl":   "Logical Shift Left — shifts a value left by N bits, filling with zeros",
+        "lsr":   "Logical Shift Right — shifts a value right by N bits, filling with zeros (unsigned)",
+        "asr":   "Arithmetic Shift Right — shifts a value right by N bits, preserving sign (signed)",
+        "ror":   "Rotate Right — rotates bits right by N positions",
+        "cmp":   "Compare — subtracts and sets flags, result is discarded",
+        "cmn":   "Compare Negative — adds and sets flags, result is discarded",
+        "tst":   "Test Bits — ANDs and sets flags, result is discarded",
+        "neg":   "Negate — two's complement negation",
+        "negs":  "Negate setting flags — like NEG but updates flags",
+        "mvn":   "Move NOT — bitwise inversion of a register",
+        "b":     "Branch — unconditional jump to a PC-relative address",
+        "bl":    "Branch with Link — calls a subroutine; return address saved in x30 (LR)",
+        "blr":   "Branch with Link to Register — calls a subroutine via address in a register",
+        "br":    "Branch to Register — unconditional jump to the address in a register",
+        "ret":   "Return — jumps to the address in x30 (LR), ending the current function",
+        "b.eq":  "Branch if Equal — Z=1 (last comparison was equal)",
+        "b.ne":  "Branch if Not Equal — Z=0",
+        "b.lt":  "Branch if Less Than — N≠V (signed)",
+        "b.gt":  "Branch if Greater Than — Z=0 and N=V (signed)",
+        "b.le":  "Branch if Less or Equal — Z=1 or N≠V (signed)",
+        "b.ge":  "Branch if Greater or Equal — N=V (signed)",
+        "b.lo":  "Branch if Lower — C=0 (unsigned less than)",
+        "b.hi":  "Branch if Higher — C=1 and Z=0 (unsigned greater than)",
+        "b.ls":  "Branch if Lower or Same — C=0 or Z=1 (unsigned)",
+        "b.hs":  "Branch if Higher or Same — C=1 (unsigned greater or equal)",
+        "b.mi":  "Branch if Minus — N=1 (result was negative)",
+        "b.pl":  "Branch if Plus — N=0 (result was non-negative)",
+        "b.vs":  "Branch if Overflow Set — V=1",
+        "b.vc":  "Branch if Overflow Clear — V=0",
+        "b.cs":  "Branch if Carry Set — C=1",
+        "b.cc":  "Branch if Carry Clear — C=0",
+        "cbz":   "Compare and Branch if Zero — branches if register == 0, no flags affected",
+        "cbnz":  "Compare and Branch if Not Zero — branches if register != 0, no flags affected",
+        "tbz":   "Test and Branch if Zero — branches if a specific bit is 0",
+        "tbnz":  "Test and Branch if Not Zero — branches if a specific bit is 1",
+        "adrp":  "Address of Page — loads a 4 KB page-aligned PC-relative address into a register",
+        "adr":   "Address — loads a byte-precise PC-relative address into a register",
+        "nop":   "No Operation — does nothing; used for alignment or pipeline padding",
+        "svc":   "Supervisor Call — triggers a syscall to the OS kernel (syscall number in x16)",
+        "brk":   "Breakpoint — generates a debug exception (used by debuggers)",
+        "dmb":   "Data Memory Barrier — ensures ordering of memory accesses",
+        "dsb":   "Data Synchronization Barrier — waits for all memory accesses to complete",
+        "isb":   "Instruction Synchronization Barrier — flushes the instruction pipeline",
+        "csel":  "Conditional Select — sets Rd = Rn if condition true, else Rd = Rm",
+        "cset":  "Conditional Set — sets Rd = 1 if condition true, else Rd = 0",
+        "csetm": "Conditional Set Mask — sets Rd = -1 (all ones) if true, else 0",
+        "cinc":  "Conditional Increment — sets Rd = Rn+1 if condition true, else Rd = Rn",
+        "cneg":  "Conditional Negate — negates Rn if condition is true",
+        "csinc": "Conditional Select Increment — Rd = Rn if true, else Rd = Rm + 1",
+        "csinv": "Conditional Select Invert — Rd = Rn if true, else Rd = ~Rm",
+        "csneg": "Conditional Select Negate — Rd = Rn if true, else Rd = -Rm",
+        "clz":   "Count Leading Zeros — counts the number of leading zero bits in a register",
+        "cls":   "Count Leading Sign Bits — counts consecutive bits equal to the sign bit (minus 1)",
+        "rbit":  "Reverse Bits — reverses the order of all bits",
+        "rev":   "Reverse Bytes — reverses byte order (big ↔ little endian)",
+        "rev16": "Reverse Bytes in Halfwords — reverses bytes within each 16-bit halfword",
+        "rev32": "Reverse Bytes in Words — reverses bytes within each 32-bit word",
+        "uxth":  "Unsigned Extend Halfword — zero-extends bits [15:0] to 64 bits",
+        "uxtb":  "Unsigned Extend Byte — zero-extends bits [7:0] to 64 bits",
+        "sxth":  "Signed Extend Halfword — sign-extends bits [15:0] to 64 bits",
+        "sxtb":  "Signed Extend Byte — sign-extends bits [7:0] to 64 bits",
+        "sxtw":  "Signed Extend Word — sign-extends bits [31:0] to 64 bits",
+        "ubfx":  "Unsigned Bit Field Extract — extracts a field of bits, zero-extends",
+        "sbfx":  "Signed Bit Field Extract — extracts a field of bits, sign-extends",
+        "bfi":   "Bit Field Insert — inserts bits from one register into another",
+        "bfxil": "Bit Field Extract and Insert Low — copies low bits from one register to another",
+        "extr":  "Extract Register — extracts a bit field spanning two registers (concatenation shift)",
+    ]
 
     override func draw(_ dirtyRect: NSRect) {
         // 1. Draw our custom backgrounds FIRST (before calling super)

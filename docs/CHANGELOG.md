@@ -4,6 +4,43 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-13 — Restore __TEXT hex dump, highlight current instruction bytes, assembly hover tooltip
+
+### Feature: __TEXT hex dump restored in SegmentPanel
+
+`SegmentPanelView` now shows three panes: `__DATA`, `__TEXT`, and `Disassembly`. The `__TEXT`
+pane shows the raw machine code bytes of the text section read via LLDB `memory read`. The
+`readTextSection()` call was re-added to `LLDBController.refreshState()`.
+
+### Feature: Current instruction highlighted in __TEXT hex dump
+
+When the debugger is paused, the 4 bytes of the currently-executing ARM64 instruction are
+highlighted in orange within the `__TEXT` hex dump. ARM64 instructions are always 4 bytes and
+4-byte aligned, so they occupy either bytes [0-3] or [4-7] within each 8-byte quadword row.
+
+`StackQuadwordRow` now accepts an optional `highlightByteRange: Range<Int>?` and renders each
+byte as a separate `Text` view in an `HStack`, applying an orange background to highlighted bytes.
+`LiveStackDumpContent` receives an optional `highlightAddress` and computes the byte range
+per row by masking with `~7`. `MemoryHexDumpView` passes `appState.currentExecutionAddress`
+as `highlightAddress` for the `__TEXT` segment.
+
+### Feature: Assembly instruction hover tooltip in source editor
+
+Hovering the mouse over a source line in the editor now shows a native macOS tooltip with:
+- The disassembly text of the corresponding ARM64 instruction(s)
+- The machine code bytes (e.g. `FD 7B BF A9`) from the live `__TEXT` memory
+- A plain-English description of the instruction mnemonic
+
+`LineNumberTextView` adds an `NSTrackingArea` for `mouseMoved` events. On each move it
+converts the mouse point to a source-line number, filters `disassembly` for matching lines,
+extracts 4 bytes from `textEntries` at the instruction's address, and sets `toolTip`.
+The byte extraction: `quadwordAddr = address & ~7`, `byteOffset = address & 7` (0 or 4).
+`SyntaxTextEditor` now accepts `disassembly` and `textEntries` params and syncs them to
+the text view in `updateNSView`. A 90-entry mnemonic description table covering all common
+ARM64 instructions is embedded in `LineNumberTextView`.
+
+---
+
 ## 2026-03-13 — Fix disassembly view showing no data; add source-line lookup via DWARF
 
 ### Bug: disassembly view empty after program starts
