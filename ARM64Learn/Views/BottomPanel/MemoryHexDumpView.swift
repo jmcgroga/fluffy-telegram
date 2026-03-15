@@ -23,7 +23,8 @@ struct MemoryHexDumpView: View {
             // Hex dump content
             ScrollView {
                 if segmentName == "STACK", !appState.liveStackEntries.isEmpty {
-                    LiveStackDumpContent(entries: appState.liveStackEntries)
+                    LiveStackDumpContent(entries: appState.liveStackEntries,
+                                        spAddress: appState.currentSP)
                 } else if segmentName == "__DATA", !appState.liveDataEntries.isEmpty {
                     LiveStackDumpContent(entries: appState.liveDataEntries)
                 } else if segmentName == "__TEXT", !appState.liveTextEntries.isEmpty {
@@ -99,14 +100,15 @@ extension MemorySegment {
 /// Shows each 8-byte quadword as a complete 64-bit value.
 /// When `highlightAddress` is set, the 4-byte ARM64 instruction at that address
 /// is highlighted within its containing 8-byte quadword row.
+/// When `spAddress` is set, the row whose address matches SP gets a ▶ indicator
+/// and the view auto-scrolls to keep that row visible whenever SP changes.
 struct LiveStackDumpContent: View {
     let entries: [(address: UInt64, value: UInt64)]
     var highlightAddress: UInt64? = nil
+    var spAddress: UInt64? = nil
 
     private var segmentName: String {
-        // Determine segment name based on address range
         guard let firstAddress = entries.first?.address else { return "memory" }
-        // Text section is typically in the lower address range (around 0x100000000 on macOS)
         if firstAddress >= 0x100000000 && firstAddress < 0x100010000 {
             return "text section"
         } else if firstAddress >= 0x1_0000_0000 && firstAddress < 0x2_0000_0000 {
@@ -127,37 +129,49 @@ struct LiveStackDumpContent: View {
     }
 
     var body: some View {
-        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-            Section {
-                ForEach(Array(entries.enumerated()), id: \.offset) { idx, entry in
-                    StackQuadwordRow(
-                        address: entry.address,
-                        value: entry.value,
-                        highlightByteRange: highlightByteRange(for: entry.address)
-                    )
-                    if idx < entries.count - 1 {
-                        Divider().padding(.leading, 130)
+        ScrollViewReader { proxy in
+            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                Section {
+                    ForEach(Array(entries.enumerated()), id: \.element.address) { idx, entry in
+                        VStack(spacing: 0) {
+                            StackQuadwordRow(
+                                address: entry.address,
+                                value: entry.value,
+                                isSP: entry.address == spAddress,
+                                highlightByteRange: highlightByteRange(for: entry.address)
+                            )
+                            if idx < entries.count - 1 {
+                                Divider().padding(.leading, 156)
+                            }
+                        }
+                        .id(entry.address)
+                    }
+                } header: {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "livephoto")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                            Text("Live \(segmentName) — \(entries.count) quadwords")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(.regularMaterial)
+                        Divider()
                     }
                 }
-            } header: {
-                VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "livephoto")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                        Text("Live \(segmentName) — \(entries.count) quadwords")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(.regularMaterial)
-                    Divider()
+            }
+            .padding(.top, 1)
+            .onChange(of: spAddress) { _, newSP in
+                guard let sp = newSP else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(sp, anchor: .center)
                 }
             }
         }
-        .padding(.top, 1)
     }
 }
 
@@ -166,6 +180,8 @@ struct LiveStackDumpContent: View {
 struct StackQuadwordRow: View {
     let address: UInt64
     let value: UInt64
+    /// Whether this row's address is the current stack pointer.
+    var isSP: Bool = false
     /// Optional byte range [0-7] within this quadword to highlight (e.g. a 4-byte ARM64 instruction).
     var highlightByteRange: Range<Int>? = nil
 
@@ -183,10 +199,16 @@ struct StackQuadwordRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            // SP indicator — mirrors the ▶ used for the current instruction in DisassemblyView
+            Text(isSP ? "▶" : " ")
+                .font(.system(size: 10, weight: .bold))
+                .frame(width: 12)
+                .foregroundStyle(isSP ? Color.orange : Color.clear)
+
             // Address (16 hex digits, no 0x prefix)
             Text(String(format: "%016llX:", address))
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isSP ? Color.primary : Color.secondary)
                 .frame(width: 140, alignment: .leading)
 
             // Hex bytes — per-byte Text views so individual bytes can be highlighted
@@ -217,6 +239,7 @@ struct StackQuadwordRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
+        .background(isSP ? Color.orange.opacity(0.12) : Color.clear)
     }
 }
 
@@ -226,13 +249,19 @@ struct StackQuadwordRow: View {
     MemoryHexDumpView(segmentName: "STACK")
         .environmentObject(previewAppState)
         .onAppear {
-            // Add sample stack data for preview
+            // Entries stored low → high; the view reverses them so SP appears near bottom.
             previewAppState.liveStackEntries = [
-                (address: 0x16fdff000, value: 0x0000000016fdff010),  // Saved FP
-                (address: 0x16fdff008, value: 0x0000000100003f80),  // Saved LR
-                (address: 0x16fdff010, value: 0x0000000000000042),  // Local var
-                (address: 0x16fdff018, value: 0x0000000000000001),  // Local var
+                (address: 0x16fdff000, value: 0x0000000016fdff020), // SP → saved FP
+                (address: 0x16fdff008, value: 0x0000000100003f80),  // saved LR
+                (address: 0x16fdff010, value: 0x0000000000000042),  // local var
+                (address: 0x16fdff018, value: 0x0000000000000001),  // local var
             ]
+            // Set preview SP to first entry so the indicator is visible
+            previewAppState.memoryState.registers.indices.forEach { i in
+                if previewAppState.memoryState.registers[i].name == "sp" {
+                    previewAppState.memoryState.registers[i].value = 0x16fdff000
+                }
+            }
         }
         .frame(width: 1000, height: 400)
 }

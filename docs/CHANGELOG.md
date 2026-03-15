@@ -4,6 +4,48 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-15 — Stack view: exact read count, no loader noise
+
+### Changed
+- **`LLDBController.readStackMemory()`** (`LLDBController.swift`): Removed the `+ 4` over-read above `stackBase` (which was showing loader-populated memory the user never touched). When `sp == stackBase` (nothing pushed yet), the callback is invoked with an empty array so the view clears rather than showing stale or meaningless data. Count is now exactly `(stackBase - sp) / 8`, capped at 256.
+
+---
+
+## 2026-03-15 — Stack view: dynamic read count based on stack base
+
+### Changed
+- **`LLDBController`** (`LLDBController.swift`): Added `stackBase: UInt64?` property (reset in `attach()`). `readStackMemory()` now reads `register read sp` to get the current SP, captures it as `stackBase` on the first stop, then computes `count = (stackBase - sp) / 8 + 4` (capped at 256). This means the memory read always covers exactly the allocated stack and grows automatically as the program pushes data — no fixed window needed.
+
+---
+
+## 2026-03-15 — Stack view: "grows down" layout with SP boundary divider
+
+### Changed
+- **`LLDBController.readStackMemory()`** (`LLDBController.swift`): Now reads starting at `$sp - 0x20` (4 quadwords below SP) with count 36, so the view can show the free space the stack will grow into as well as the allocated content.
+- **`LiveStackDumpContent`** (`MemoryHexDumpView.swift`): Stack view now displays entries in **descending address order** (high → low) to match the classic ARM64 stack diagram — older frames at the top, current SP near the bottom. A "↓ stack grows toward lower addresses" divider is inserted between the SP row and the below-SP rows. The section header gains a "high ↑" direction hint. Auto-scroll still centers on SP.
+- **`StackQuadwordRow`** (`MemoryHexDumpView.swift`): Added `isBelowSP: Bool` parameter. Rows below SP (free space — not yet allocated) are rendered in `.quaternary` foreground to visually distinguish them from live stack content.
+- **`StackGrowthDivider`** (`MemoryHexDumpView.swift`): New private view used as the SP/below-SP boundary separator.
+
+---
+
+## 2026-03-15 — Revert LLDB stepping fix attempts (did not resolve the issue)
+
+### Reverted
+- `issueStepCommand` and `continueExecution` in `LLDBController.swift` restored to their pre-fix state. Two attempted fixes were made: (1) moving `refreshState()` before `handleStopResponse()`, which caused the UI to get stuck after just one step; (2) an atomic `.ready → .waitingResponse` CAS before refresh, which still did not resolve the underlying problem. Both have been reverted. The root cause of the stepping deadlock in the C tutorial requires further investigation.
+
+---
+
+## 2026-03-14 — Stack view: SP indicator and auto-scroll as stack grows
+
+### Changed
+- **`StackQuadwordRow`** (`MemoryHexDumpView.swift`): Added `isSP: Bool` parameter. When true, renders an orange `▶` indicator before the address (matching the yellow `▶` used for the current instruction in `DisassemblyView`) and highlights the full row with a subtle orange background.
+- **`LiveStackDumpContent`** (`MemoryHexDumpView.swift`): Added `spAddress: UInt64?` parameter. Wrapped body in a `ScrollViewReader` and switched `ForEach` to use address-based IDs. Auto-scrolls to the SP row (centered) with animation whenever SP changes.
+- **`MemoryHexDumpView`** (`MemoryHexDumpView.swift`): Passes `spAddress: appState.currentSP` to `LiveStackDumpContent` for the STACK segment.
+- **`AppState`** (`AppState.swift`): Added `currentSP: UInt64?` computed property that reads `sp` from the live register set.
+- **`LLDBController.readStackMemory()`** (`LLDBController.swift`): Increased quadword count from 16 to 32 (256 bytes) so the view captures the full stack frame as space is allocated.
+
+---
+
 ## 2026-03-14 — Fix debugger controls not resetting after process exits naturally
 
 ### Fixed

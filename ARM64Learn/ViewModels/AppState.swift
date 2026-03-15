@@ -142,6 +142,12 @@ class AppState: ObservableObject {
     /// Use this (not lldbIsRunning) to show the program stdin input row.
     var lldbInferiorNeedsInput: Bool { lldbController.inferiorNeedsInput }
 
+    /// Current stack pointer value, or nil if no debug session is active.
+    var currentSP: UInt64? {
+        let val = memoryState.registers.first(where: { $0.name == "sp" })?.value ?? 0
+        return val == 0 ? nil : val
+    }
+
     // Terminal
     @Published var terminalOutput: String = ""
     @Published var terminalSession: TerminalSession?

@@ -124,6 +124,12 @@ final class LLDBController: ObservableObject {
     private var cachedDataSection: (address: UInt64, size: UInt64)? = nil
     private var cachedTextSection: (address: UInt64, size: UInt64)? = nil
 
+    // The stack pointer value at the first stop after launch. The OS allocates the
+    // stack region before the process starts, so this value is the fixed "ceiling"
+    // of the user's stack. Comparing it against the current SP tells us exactly how
+    // much stack has been allocated at any given point.
+    private var stackBase: UInt64? = nil
+
     // Cache disassembly lines keyed by the base address of the disassembled function.
     // Source-line enrichment (image lookup per instruction) is expensive, so we only
     // run it once per function and reuse the result on subsequent steps.
@@ -139,6 +145,7 @@ final class LLDBController: ObservableObject {
         cachedTextSection = nil
         cachedDisassemblyBase = nil
         cachedDisassemblyLines = []
+        stackBase = nil
         session.controllerOutputHandler = { [weak self] chunk in
             self?.receiveOutput(chunk)
         }
@@ -394,13 +401,31 @@ final class LLDBController: ObservableObject {
         }
     }
 
-    /// Step 8: Read stack memory (16 quadwords from $sp).
+    /// Step 8: Read stack memory from $sp up to the stack base.
+    ///
+    /// On the first call the current SP is captured as `stackBase` — the ceiling of
+    /// the user's stack for this session. On every subsequent call the read covers
+    /// exactly `(stackBase - sp) / 8` quadwords: the precise set of 8-byte slots the
+    /// program has pushed since we started watching. If SP equals the base (nothing
+    /// pushed yet) the callback is invoked with an empty array so the view clears.
     func readStackMemory() async {
-        let memOut = await send("memory read --format uint8_t[] --size 8 --count 16 $sp")
-        let stackEntries = LLDBOutputParser.parseMemoryRead(from: memOut)
-        if !stackEntries.isEmpty {
-            await MainActor.run { self.onStackMemoryUpdated?(stackEntries) }
+        let spOut = await send("register read sp")
+        let regs = LLDBOutputParser.parseRegisters(from: spOut)
+        guard let sp = regs["sp"], sp > 0 else { return }
+
+        // First stop: record the stack ceiling.
+        if stackBase == nil { stackBase = sp }
+
+        guard let base = stackBase, base > sp else {
+            // SP is at the base — nothing has been pushed onto the user's stack yet.
+            await MainActor.run { self.onStackMemoryUpdated?([]) }
+            return
         }
+
+        let count = min(256, Int((base - sp) / 8))
+        let memOut = await send("memory read --format uint8_t[] --size 8 --count \(count) $sp")
+        let stackEntries = LLDBOutputParser.parseMemoryRead(from: memOut)
+        await MainActor.run { self.onStackMemoryUpdated?(stackEntries) }
     }
 
     /// Step 9: Read __DATA section contents.
