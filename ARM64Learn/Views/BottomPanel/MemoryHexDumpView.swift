@@ -28,7 +28,7 @@ struct MemoryHexDumpView: View {
                 } else if segmentName == "__DATA", !appState.liveDataEntries.isEmpty {
                     LiveStackDumpContent(entries: appState.liveDataEntries)
                 } else if segmentName == "__TEXT", !appState.liveTextEntries.isEmpty {
-                    LiveStackDumpContent(
+                    LiveTextDumpContent(
                         entries: appState.liveTextEntries,
                         highlightAddress: appState.currentExecutionAddress
                     )
@@ -240,6 +240,134 @@ struct StackQuadwordRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .background(isSP ? Color.orange.opacity(0.12) : Color.clear)
+    }
+}
+
+// MARK: - Live Text Dump (32-bit instruction rows)
+
+/// Displays live __TEXT memory as 4-byte instruction rows, one ARM64 instruction per row.
+/// Highlights the row whose address matches `highlightAddress` (the current PC).
+struct LiveTextDumpContent: View {
+    let entries: [(address: UInt64, value: UInt64)]
+    var highlightAddress: UInt64? = nil
+
+    /// Expand each 8-byte entry into two 4-byte instruction rows (little-endian).
+    private var instructionRows: [(address: UInt64, word: UInt32)] {
+        entries.flatMap { entry -> [(address: UInt64, word: UInt32)] in
+            let lo = UInt32(entry.value & 0xFFFF_FFFF)
+            let hi = UInt32((entry.value >> 32) & 0xFFFF_FFFF)
+            return [
+                (address: entry.address,     word: lo),
+                (address: entry.address + 4, word: hi),
+            ]
+        }
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                Section {
+                    ForEach(Array(instructionRows.enumerated()), id: \.element.address) { idx, row in
+                        VStack(spacing: 0) {
+                            TextInstructionRow(
+                                address: row.address,
+                                word: row.word,
+                                isPC: row.address == highlightAddress
+                            )
+                            if idx < instructionRows.count - 1 {
+                                Divider().padding(.leading, 168)
+                            }
+                        }
+                        .id(row.address)
+                    }
+                } header: {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "livephoto")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                            Text("Live __text — \(instructionRows.count) instructions")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(.regularMaterial)
+                        Divider()
+                    }
+                }
+            }
+            .padding(.top, 1)
+            .onChange(of: highlightAddress) { _, newPC in
+                guard let pc = newPC else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    proxy.scrollTo(pc, anchor: .center)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Text Instruction Row (4-byte / 32-bit)
+
+struct TextInstructionRow: View {
+    let address: UInt64
+    let word: UInt32
+    var isPC: Bool = false
+
+    private var bytes: [UInt8] {
+        (0..<4).map { i in UInt8((word >> (i * 8)) & 0xFF) }
+    }
+
+    private var asciiString: String {
+        bytes.map { byte in
+            (32...126).contains(byte) ? String(UnicodeScalar(byte)) : "."
+        }.joined()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // PC indicator
+            Text(isPC ? "▶" : " ")
+                .font(.system(size: 10, weight: .bold))
+                .frame(width: 12)
+                .foregroundStyle(isPC ? Color.orange : Color.clear)
+
+            // Address (16 hex digits, no 0x prefix)
+            Text(String(format: "%016llX:", address))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(isPC ? Color.primary : Color.secondary)
+                .frame(width: 140, alignment: .leading)
+
+            // 4 hex bytes
+            HStack(spacing: 4) {
+                ForEach(0..<4, id: \.self) { i in
+                    Text(String(format: "%02x", bytes[i]))
+                        .font(.system(size: 11,
+                                      weight: isPC ? .semibold : .regular,
+                                      design: .monospaced))
+                        .foregroundStyle(isPC ? Color.orange : Color.primary)
+                        .padding(.horizontal, 1)
+                        .background(
+                            isPC ? Color.orange.opacity(0.18) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 2)
+                        )
+                }
+                Spacer()
+            }
+            .frame(width: 90, alignment: .leading)
+
+            // ASCII representation
+            Text(asciiString)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.tertiary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background(isPC ? Color.orange.opacity(0.12) : Color.clear)
     }
 }
 

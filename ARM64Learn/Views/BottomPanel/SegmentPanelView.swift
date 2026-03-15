@@ -1,19 +1,16 @@
 import SwiftUI
 
-// MARK: - Segment Panel View (__DATA on top, Disassembly on bottom)
+// MARK: - Segment Panel View (Disassembly | __TEXT side-by-side)
 
-/// Displays the __DATA hex dump and the disassembly view stacked vertically in the top-right area.
+/// Displays the disassembly view and the __TEXT hex dump side-by-side in the top-right area.
 struct SegmentPanelView: View {
     var body: some View {
-        VSplitView {
-            MemoryHexDumpView(segmentName: "__DATA")
-                .frame(minHeight: 60)
+        HSplitView {
+            DisassemblyView()
+                .frame(minWidth: 200)
 
             MemoryHexDumpView(segmentName: "__TEXT")
-                .frame(minHeight: 60)
-
-            DisassemblyView()
-                .frame(minHeight: 60)
+                .frame(minWidth: 160)
         }
     }
 }

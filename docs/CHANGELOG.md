@@ -4,6 +4,21 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-15 — Reorganize panels: __DATA to bottom strip, __TEXT beside Disassembly
+
+### Changed
+- **`SegmentPanelView.swift`**: Replaced the `VSplitView` (`__DATA` / `__TEXT` / Disassembly) with an `HSplitView` showing `DisassemblyView` on the left and `__TEXT` on the right.
+- **`MemoryStripView.swift`**: Added `__DATA` between Stack and Heap (now Registers | Stack | __DATA | Heap).
+
+---
+
+## 2026-03-15 — __TEXT view: 32-bit instruction rows
+
+### Changed
+- **`MemoryHexDumpView.swift`**: Added `LiveTextDumpContent` and `TextInstructionRow` views. The `__TEXT` panel now expands each 8-byte LLDB entry into two 4-byte rows (one per ARM64 instruction), with the full row highlighted in orange when its address matches the current PC. Replaces the previous `LiveStackDumpContent` (64-bit rows) for the `__TEXT` segment. PC auto-scroll is preserved via `ScrollViewReader`.
+
+---
+
 ## 2026-03-15 — Stack view: exact read count, no loader noise
 
 ### Changed
