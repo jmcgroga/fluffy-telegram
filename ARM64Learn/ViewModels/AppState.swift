@@ -223,13 +223,7 @@ class AppState: ObservableObject {
                 self?.applyFrameUpdate(frame)
             }
             controller.onProcessTerminated = { [weak self] _ in
-                self?.currentExecutionLine = nil
-                self?.currentExecutionAddress = nil
-                self?.liveDisassembly = []
-                self?.liveStackEntries = []
-                self?.liveDataEntries = []
-                self?.liveTextEntries = []
-                self?.lastRegisterChangeSummary = ""
+                self?.terminateDebugger()
             }
             controller.onStackMemoryUpdated = { [weak self] entries in
                 self?.liveStackEntries = entries
@@ -320,9 +314,14 @@ class AppState: ObservableObject {
     func terminateDebugger() {
         lldbController.terminate()
         lldbSession = nil
+        lldbController = LLDBController()  // Reset to .idle so controls re-enable
         currentExecutionLine = nil
         currentExecutionAddress = nil
         liveDisassembly = []
+        liveStackEntries = []
+        liveDataEntries = []
+        liveTextEntries = []
+        lastRegisterChangeSummary = ""
     }
 
     // MARK: - Breakpoints

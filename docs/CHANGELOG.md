@@ -4,6 +4,14 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-14 — Fix debugger controls not resetting after process exits naturally
+
+### Fixed
+- **`AppState.terminateDebugger()`** (`AppState.swift`): After terminating the session, assigns a fresh `LLDBController()` so `sessionState` returns to `.idle`. Previously the state stayed `.terminated` permanently, leaving Run/Debug buttons disabled and the Stop button unresponsive.
+- **`AppState.onProcessTerminated` callback** (`AppState.swift`): Now calls `terminateDebugger()` instead of only clearing display state, so the controls auto-reset when the inferior exits on its own (not just when the user clicks Stop). Also consolidates display-state cleanup into one place.
+
+---
+
 ## 2026-03-14 — Move debugger controls to toolbar; separate Run and Debug buttons
 
 ### Changed
