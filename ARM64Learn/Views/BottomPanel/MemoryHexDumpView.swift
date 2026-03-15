@@ -20,34 +20,31 @@ struct MemoryHexDumpView: View {
             
             Divider()
             
-            // Hex dump content
-            ScrollView {
-                if segmentName == "STACK", !appState.liveStackEntries.isEmpty {
-                    LiveStackDumpContent(entries: appState.liveStackEntries,
-                                        spAddress: appState.currentSP)
-                } else if segmentName == "__DATA", !appState.liveDataEntries.isEmpty {
-                    LiveStackDumpContent(entries: appState.liveDataEntries)
-                } else if segmentName == "__TEXT", !appState.liveTextEntries.isEmpty {
-                    LiveTextDumpContent(
-                        entries: appState.liveTextEntries,
-                        highlightAddress: appState.currentExecutionAddress
-                    )
-                } else if segment != nil {
-                    HexDumpContent()
-                } else {
-                    VStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
-                            .foregroundStyle(.yellow)
-                        Text("Memory segment '\(segmentName)' not found")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding()
+            // Hex dump content — each live content view owns its own scroll view
+            if segmentName == "STACK", !appState.liveStackEntries.isEmpty {
+                LiveStackDumpContent(entries: appState.liveStackEntries,
+                                     spAddress: appState.currentSP)
+            } else if segmentName == "__DATA", !appState.liveDataEntries.isEmpty {
+                LiveStackDumpContent(entries: appState.liveDataEntries)
+            } else if segmentName == "__TEXT", !appState.liveTextEntries.isEmpty {
+                LiveTextDumpContent(
+                    entries: appState.liveTextEntries,
+                    highlightAddress: appState.currentExecutionAddress
+                )
+            } else if segment != nil {
+                HexDumpContent()
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundStyle(.yellow)
+                    Text("Memory segment '\(segmentName)' not found")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
             }
-            .background(Color(nsColor: .textBackgroundColor).opacity(0.95))
         }
     }
 }
@@ -129,25 +126,10 @@ struct LiveStackDumpContent: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    ForEach(Array(entries.enumerated()), id: \.element.address) { idx, entry in
-                        VStack(spacing: 0) {
-                            StackQuadwordRow(
-                                address: entry.address,
-                                value: entry.value,
-                                isSP: entry.address == spAddress,
-                                highlightByteRange: highlightByteRange(for: entry.address)
-                            )
-                            if idx < entries.count - 1 {
-                                Divider().padding(.leading, 156)
-                            }
-                        }
-                        .id(entry.address)
-                    }
-                } header: {
-                    VStack(spacing: 0) {
+        GeometryReader { geo in
+            ScrollViewReader { proxy in
+                ScrollView([.vertical, .horizontal]) {
+                    VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 6) {
                             Image(systemName: "livephoto")
                                 .font(.caption2)
@@ -155,20 +137,35 @@ struct LiveStackDumpContent: View {
                             Text("Live \(segmentName) — \(entries.count) quadwords")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundStyle(.secondary)
-                            Spacer()
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
                         .background(.regularMaterial)
                         Divider()
+                        ForEach(Array(entries.enumerated()), id: \.element.address) { idx, entry in
+                            VStack(spacing: 0) {
+                                StackQuadwordRow(
+                                    address: entry.address,
+                                    value: entry.value,
+                                    isSP: entry.address == spAddress,
+                                    highlightByteRange: highlightByteRange(for: entry.address)
+                                )
+                                if idx < entries.count - 1 {
+                                    Divider().padding(.leading, 156)
+                                }
+                            }
+                            .id(entry.address)
+                        }
                     }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
                 }
-            }
-            .padding(.top, 1)
-            .onChange(of: spAddress) { _, newSP in
-                guard let sp = newSP else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    proxy.scrollTo(sp, anchor: .center)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.95))
+                .onChange(of: spAddress) { _, newSP in
+                    guard let sp = newSP else { return }
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(sp, anchor: .center)
+                    }
                 }
             }
         }
@@ -234,9 +231,8 @@ struct StackQuadwordRow: View {
             Text(asciiString)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
-
-            Spacer()
         }
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .background(isSP ? Color.orange.opacity(0.12) : Color.clear)
@@ -264,24 +260,10 @@ struct LiveTextDumpContent: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    ForEach(Array(instructionRows.enumerated()), id: \.element.address) { idx, row in
-                        VStack(spacing: 0) {
-                            TextInstructionRow(
-                                address: row.address,
-                                word: row.word,
-                                isPC: row.address == highlightAddress
-                            )
-                            if idx < instructionRows.count - 1 {
-                                Divider().padding(.leading, 168)
-                            }
-                        }
-                        .id(row.address)
-                    }
-                } header: {
-                    VStack(spacing: 0) {
+        GeometryReader { geo in
+            ScrollViewReader { proxy in
+                ScrollView([.vertical, .horizontal]) {
+                    VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 6) {
                             Image(systemName: "livephoto")
                                 .font(.caption2)
@@ -289,20 +271,34 @@ struct LiveTextDumpContent: View {
                             Text("Live __text — \(instructionRows.count) instructions")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundStyle(.secondary)
-                            Spacer()
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
                         .background(.regularMaterial)
                         Divider()
+                        ForEach(Array(instructionRows.enumerated()), id: \.element.address) { idx, row in
+                            VStack(spacing: 0) {
+                                TextInstructionRow(
+                                    address: row.address,
+                                    word: row.word,
+                                    isPC: row.address == highlightAddress
+                                )
+                                if idx < instructionRows.count - 1 {
+                                    Divider().padding(.leading, 168)
+                                }
+                            }
+                            .id(row.address)
+                        }
                     }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
                 }
-            }
-            .padding(.top, 1)
-            .onChange(of: highlightAddress) { _, newPC in
-                guard let pc = newPC else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    proxy.scrollTo(pc, anchor: .center)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.95))
+                .onChange(of: highlightAddress) { _, newPC in
+                    guard let pc = newPC else { return }
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(pc, anchor: .center)
+                    }
                 }
             }
         }
@@ -362,9 +358,8 @@ struct TextInstructionRow: View {
             Text(asciiString)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
-
-            Spacer()
         }
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .background(isPC ? Color.orange.opacity(0.12) : Color.clear)

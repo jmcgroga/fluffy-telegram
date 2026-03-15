@@ -32,37 +32,54 @@ private func buildItems(from lines: [DisassemblyLine]) -> [DisassemblyItem] {
 struct DisassemblyView: View {
     @EnvironmentObject var appState: AppState
 
+    /// Build a per-instruction lookup from liveTextEntries.
+    /// Each 8-byte entry contains two 4-byte ARM64 instructions (little-endian).
+    private var textLookup: [UInt64: UInt32] {
+        var dict: [UInt64: UInt32] = [:]
+        for entry in appState.liveTextEntries {
+            dict[entry.address]     = UInt32(entry.value & 0xFFFF_FFFF)
+            dict[entry.address + 4] = UInt32((entry.value >> 32) & 0xFFFF_FFFF)
+        }
+        return dict
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             DisassemblyHeader()
             if appState.liveDisassembly.isEmpty {
                 DisassemblyEmptyView()
             } else {
-                DisassemblyColumnHeader()
-                Divider()
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            let items = buildItems(from: appState.liveDisassembly)
-                            ForEach(items) { item in
-                                switch item {
-                                case .sourceMarker(_, let sourceLine):
-                                    DisassemblySourceMarkerRow(sourceLine: sourceLine)
-                                case .instruction(let line):
-                                    DisassemblyInstructionRow(
-                                        line: line,
-                                        isCurrent: line.address == appState.currentExecutionAddress
-                                    )
-                                    .id(line.id)
+                GeometryReader { geo in
+                    ScrollViewReader { proxy in
+                        ScrollView([.vertical, .horizontal]) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                let showBytes = !appState.liveTextEntries.isEmpty
+                                let items = buildItems(from: appState.liveDisassembly)
+                                let lookup = textLookup
+                                DisassemblyColumnHeader(showBytes: showBytes)
+                                Divider()
+                                ForEach(items) { item in
+                                    switch item {
+                                    case .sourceMarker(_, let sourceLine):
+                                        DisassemblySourceMarkerRow(sourceLine: sourceLine)
+                                    case .instruction(let line):
+                                        DisassemblyInstructionRow(
+                                            line: line,
+                                            isCurrent: line.address == appState.currentExecutionAddress,
+                                            bytes: lookup[line.address]
+                                        )
+                                        .id(line.id)
+                                    }
                                 }
                             }
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
                         }
-                        .padding(.vertical, 4)
-                    }
-                    .onChange(of: appState.currentExecutionAddress) { _, newPC in
-                        if let pc = newPC,
-                           let line = appState.liveDisassembly.first(where: { $0.address == pc }) {
-                            withAnimation { proxy.scrollTo(line.id, anchor: .center) }
+                        .onChange(of: appState.currentExecutionAddress) { _, newPC in
+                            if let pc = newPC,
+                               let line = appState.liveDisassembly.first(where: { $0.address == pc }) {
+                                withAnimation { proxy.scrollTo(line.id, anchor: .center) }
+                            }
                         }
                     }
                 }
@@ -93,6 +110,8 @@ private struct DisassemblyHeader: View {
 // MARK: - Column Header
 
 private struct DisassemblyColumnHeader: View {
+    var showBytes: Bool
+
     var body: some View {
         HStack(spacing: 0) {
             // ▶ indicator column
@@ -100,13 +119,17 @@ private struct DisassemblyColumnHeader: View {
                 .frame(width: 16)
             // Address
             Text("ADDRESS")
-                .frame(width: 90, alignment: .leading)
+                .frame(width: 120, alignment: .leading)
             // Offset
             Text("OFFSET")
                 .frame(width: 50, alignment: .leading)
+            // Raw bytes (shown only when __TEXT data is available)
+            if showBytes {
+                Text("BYTES")
+                    .frame(width: 90, alignment: .leading)
+            }
             // Instruction
             Text("INSTRUCTION")
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.system(size: 9, weight: .semibold, design: .monospaced))
         .foregroundStyle(.secondary)
@@ -121,6 +144,17 @@ private struct DisassemblyColumnHeader: View {
 private struct DisassemblyInstructionRow: View {
     let line: DisassemblyLine
     let isCurrent: Bool
+    var bytes: UInt32? = nil
+
+    /// Format a 32-bit little-endian word as space-separated byte pairs: "fd 7b bf a9"
+    private var bytesString: String? {
+        guard let word = bytes else { return nil }
+        let b0 = UInt8( word        & 0xFF)
+        let b1 = UInt8((word >>  8) & 0xFF)
+        let b2 = UInt8((word >> 16) & 0xFF)
+        let b3 = UInt8((word >> 24) & 0xFF)
+        return String(format: "%02x %02x %02x %02x", b0, b1, b2, b3)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -131,7 +165,7 @@ private struct DisassemblyInstructionRow: View {
 
             // Address
             Text(String(format: "%016llX", line.address))
-                .frame(width: 90, alignment: .leading)
+                .frame(width: 120, alignment: .leading)
                 .foregroundStyle(isCurrent ? .primary : .secondary)
 
             // Offset
@@ -139,11 +173,19 @@ private struct DisassemblyInstructionRow: View {
                 .frame(width: 50, alignment: .leading)
                 .foregroundStyle(.secondary)
 
+            // Raw bytes (only when available)
+            if let bs = bytesString {
+                Text(bs)
+                    .frame(width: 90, alignment: .leading)
+                    .foregroundStyle(isCurrent ? Color.orange : Color.secondary.opacity(0.7))
+            }
+
             // Instruction text
             Text(line.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(1)
                 .foregroundStyle(.primary)
         }
+        .fixedSize(horizontal: true, vertical: false)
         .font(.system(size: 11, design: .monospaced))
         .padding(.horizontal, 8)
         .padding(.vertical, 1)
@@ -161,6 +203,8 @@ private struct DisassemblySourceMarkerRow: View {
             .font(.system(size: 10, weight: .regular, design: .monospaced))
             .italic()
             .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 8)
             .padding(.top, 6)
             .padding(.bottom, 2)

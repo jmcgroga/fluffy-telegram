@@ -1,21 +1,21 @@
 import SwiftUI
 
-// MARK: - Memory Strip View (Registers | Stack | __DATA | Heap)
+// MARK: - Memory Strip View (Registers | __DATA | Heap | Stack)
 
-/// Displays Registers, Stack, __DATA, and Heap side-by-side in the bottom panel.
+/// Displays Registers, __DATA, Heap, and Stack side-by-side in the bottom panel.
 struct MemoryStripView: View {
     var body: some View {
         HSplitView {
             RegisterPanelView()
                 .frame(minWidth: 200)
 
-            MemoryHexDumpView(segmentName: "STACK")
-                .frame(minWidth: 200)
-
             MemoryHexDumpView(segmentName: "__DATA")
                 .frame(minWidth: 200)
 
             MemoryHexDumpView(segmentName: "HEAP")
+                .frame(minWidth: 200)
+
+            MemoryHexDumpView(segmentName: "STACK")
                 .frame(minWidth: 200)
         }
     }

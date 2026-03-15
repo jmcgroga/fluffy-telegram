@@ -43,24 +43,13 @@ struct RegisterListView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                ForEach(Register.Category.allCases, id: \.self) { category in
-                    let categoryRegisters = registersByCategory[category] ?? []
-                    
-                    if !categoryRegisters.isEmpty {
-                        Section {
-                            if expandedCategories.contains(category) {
-                                ForEach(categoryRegisters) { reg in
-                                    RegisterRowView(register: reg)
-                                    
-                                    if reg.id != categoryRegisters.last?.id {
-                                        Divider()
-                                            .padding(.leading, 12)
-                                    }
-                                }
-                            }
-                        } header: {
+        GeometryReader { geo in
+            ScrollView([.vertical, .horizontal]) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Register.Category.allCases, id: \.self) { category in
+                        let categoryRegisters = registersByCategory[category] ?? []
+
+                        if !categoryRegisters.isEmpty {
                             RegisterCategoryHeader(
                                 category: category,
                                 count: categoryRegisters.count,
@@ -74,11 +63,20 @@ struct RegisterListView: View {
                                     }
                                 }
                             }
+                            if expandedCategories.contains(category) {
+                                ForEach(categoryRegisters) { reg in
+                                    RegisterRowView(register: reg)
+                                    if reg.id != categoryRegisters.last?.id {
+                                        Divider().padding(.leading, 12)
+                                    }
+                                }
+                            }
+                            Divider()
                         }
-                        
-                        Divider()
                     }
                 }
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: geo.size.width, minHeight: geo.size.height, alignment: .topLeading)
             }
         }
     }
@@ -163,8 +161,6 @@ struct RegisterRowView: View {
                 Color.clear.frame(width: 40)
             }
 
-            Spacer()
-
             // Value display — NZCV and FPSR get flag badges, others get hex/decimal toggle
             if register.name == "nzcv" {
                 FlagBitsView(value: register.value)
@@ -183,6 +179,7 @@ struct RegisterRowView: View {
                 .help("Click to toggle hex/decimal")
             }
         }
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(

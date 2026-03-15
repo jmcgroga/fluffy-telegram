@@ -4,6 +4,23 @@ Entries are newest first. Each entry covers one logical change set.
 
 ---
 
+## 2026-03-15 — All panels: prevent text wrap, enable horizontal scroll
+
+### Changed
+- **`DisassemblyView.swift`**: `ScrollView` is now `ScrollView([.vertical, .horizontal])`. `DisassemblyInstructionRow` removes `.frame(maxWidth: .infinity)` from instruction text, adds `.lineLimit(1)`, and uses `.fixedSize(horizontal: true, vertical: false)` on the row `HStack`. `DisassemblySourceMarkerRow` also gets `.lineLimit(1)` and `.fixedSize`.
+- **`MemoryHexDumpView.swift`**: Outer `ScrollView` is now `ScrollView([.vertical, .horizontal])`. `StackQuadwordRow` and `TextInstructionRow` both remove their trailing `Spacer()` and add `.fixedSize(horizontal: true, vertical: false)` so rows declare their own width.
+- **`RegisterPanelView.swift`**: `ScrollView` is now `ScrollView([.vertical, .horizontal])`. `RegisterRowView` removes the `Spacer()` between alias and value columns and adds `.fixedSize(horizontal: true, vertical: false)`.
+
+---
+
+## 2026-03-15 — Merge Disassembly and __TEXT into a single inline view
+
+### Changed
+- **`DisassemblyView.swift`**: Added a BYTES column to `DisassemblyInstructionRow`. When `liveTextEntries` is populated, each instruction row now shows its 4 raw hex bytes (e.g. `fd 7b bf a9`) between the offset and the instruction text, looked up via a `[UInt64: UInt32]` dict built from `liveTextEntries`. The column header and BYTES column are hidden when no text data is available.
+- **`SegmentPanelView.swift`**: Replaced the `HSplitView(DisassemblyView | MemoryHexDumpView(__TEXT))` with a single `DisassemblyView()` — the separate __TEXT panel is no longer needed.
+
+---
+
 ## 2026-03-15 — Reorganize panels: __DATA to bottom strip, __TEXT beside Disassembly
 
 ### Changed
